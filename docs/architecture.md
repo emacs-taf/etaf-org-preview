@@ -1,0 +1,216 @@
+# ETAF Org Preview architecture
+
+## Module layout
+
+| File | Responsibility |
+| --- | --- |
+| `etaf-org-preview.el` | Package entry: public API inventory, feature closure, `lisp/` load-path bootstrap, doctor. |
+| `lisp/etaf-org-preview-entities.el` | Entity names to Unicode, plus the sub- and superscript tables. Generated from `org-entities` by `scripts/generate-entities.el`; never edited by hand. |
+| `lisp/etaf-org-preview-parse.el` | Pure parser: text to a document tree. No file access, no buffer, no frame. |
+| `lisp/etaf-org-preview-theme.el` | Fixed palettes, face-derived palette, heading contrast rule, ETAF UI token bridge. |
+| `lisp/etaf-org-preview-model.el` | Session state: load, parse errors, fold cells, navigation, targets, media resolution, follow mode. |
+| `lisp/etaf-org-preview-views.el` | Tree to ETAF Views: inline runs, blocks, headline Component, document layout. |
+| `lisp/etaf-org-preview-app.el` | Application shell: buffer, root keys, commands, width fitting. |
+| `tests/` | Public behavior scenarios and their fixtures; `acceptance.json` inventories them. |
+| `benchmarks/` | `performance-scenarios.el` for the shared driver and `render-large-document.el` for a local baseline. |
+| `examples/` | The maintained sample document and its demo entry. |
+
+Dependencies point one way: entry → app → views/model → theme/parse →
+entities. Views and the parser never require the model, and nothing below the
+application layer reads a buffer.
+
+## Data flow
+
+```
+file or text ──> parser ──> document tree (plists + section structs)
+                                │
+       palette / width / fold cells / hidden flag (reactive sources)
+                                ↓
+                            session
+                                ↓
+                             views
+                                ↓
+                  ETAF mount ──> Ebox retained tree ──> buffer
+```
+
+- The parser is a pure function of the text and the document's own settings.
+- The session is the only mutable state. Width, palette, hidden content,
+  document and every section's fold state are separate reactive sources.
+- The views are a function of the tree plus an environment plist that carries
+  the palette, the measure, the base font size, the fold-cell accessor and the
+  action callbacks.
+- The application layer only builds the buffer, declares keys and binds
+  commands. A geometry change reflows through the framework's viewport update;
+  it never rebuilds the document.
+
+## Parsing
+
+The parser keeps a vector of lines and integer cursors; it never moves point
+and never re-splits the text.
+
+1. **Settings pass.** Every `#+KEY:` line is read into a context: title,
+   author, keywords, TODO keywords, priorities, options, macros, link
+   abbreviations. Org's own `org-todo-keywords` is consulted only when the file
+   names none and Org is loaded; otherwise the built-in `TODO | DONE` set is
+   used, so parsing stays deterministic.
+2. **Block pass.** Lines are consumed by a dispatcher in a fixed order:
+   directives and `#+BEGIN_` containers, comment lines, drawers, tables,
+   fixed-width lines, lists, rules, LaTeX environments, display math, plain
+   paragraphs. A container such as a quote or a special block recursively
+   parses its own content with the same dispatcher. An unterminated container
+   ends at the end of its parent and counts one degradation.
+3. **Headline pass.** Headlines build a section tree with a stack: a new
+   headline pops every section at the same or deeper level. A planning line
+   directly below a headline belongs to it; a property drawer or `LOGBOOK` at
+   the top of the body is lifted into the section.
+4. **Attachments.** `#+CAPTION:`, `#+NAME:` and `#+ATTR_*:` lines attach to the
+   next block in the same container. The keyword node stays in the list with
+   `:attached`, so `C-c v` can still reveal it.
+5. **Inline pass.** Each paragraph and table cell is scanned once for candidate
+   starts (`[[`, `[fn:`, `[cite`, `[#`, `<YYYY`, `<<`, `{{{`, `@@`, `src_`,
+   URLs, `\\`, and the emphasis characters). A candidate is matched with an
+   anchor regexp; a failed match emits one character and advances, so the scan
+   is linear. Emphasis checks the documented Org boundaries: the character
+   before and after may not be alphanumeric.
+6. **Ids.** A section id is its `CUSTOM_ID`, else its `ID`, else a positional
+   path (`s1.1`). Fold state, anchors and outline rows all key off that id, so
+   a reload that moves a section keeps its fold state only when the id is
+   stable.
+
+Degradations are counted per kind (`unclosed-block`, `drawer`,
+`dynamic-block`, `macro`, `directive`) and surface as one chip in the title
+block.
+
+## Folding
+
+`etaf-org-preview-section` is a Component. It receives its own fold cell and
+reads it during render, so writing one cell repaints one section and nothing
+else. The report after a single fold is a scoped update: strategy `lines`,
+a handful of edits.
+
+Three states:
+
+| State | Rendered |
+| --- | --- |
+| `folded` | Headline row, planning line, property and logbook chips |
+| `children` | The above plus child headline Components; the body is skipped |
+| `open` | Body blocks and children |
+
+A parent in `children` forces its children to render `folded`, so a whole
+subtree stays closed without writing a second state. `C-c f` writes every cell
+in one `etaf-batch`, so the document repaints once.
+
+The initial state comes from `#+STARTUP:`; `overview` renders headlines only,
+`content` opens everything. A document larger than
+`etaf-org-preview-large-document-chars` starts as an outline even without a
+`#+STARTUP:` line.
+
+## Heading anchors and navigation
+
+Each headline Component's root column carries `:id "org-section-<id>"` and
+`:role 'button`. Positions are read back from the mounted tree with
+`etaf-runtime-host-props-entries` and `etaf-host-ref-position`, so navigation
+and imenu use the renderer's own positions instead of a second index that could
+drift. `etaf-org-preview-locate` opens folded ancestors first, then moves point
+to the first non-blank row of the heading.
+
+## Media
+
+Media is resolved when a document is loaded or refreshed, not while rendering.
+A paragraph that reduces to a single link to a local file becomes a media
+descriptor:
+
+- image extensions: pixel size via `image-size`, `exists` via `file-exists-p`;
+- video extensions: a card;
+- everything else: an ordinary link.
+
+The render path only reads the descriptor, so it never touches the disk. A
+missing file or a remote URL keeps a placeholder card.
+
+## Theming
+
+A palette is an alist of semantic keys (`:ink`, `:panel`, `:border`, `:todo`,
+`:done`, `:urgent`, …). The `auto` palette derives every key from the frame's
+own faces: background and foreground from `default`, secondary text from
+`shadow`, the accent from `link`/`button`, semantic colors from
+`success`/`warning`/`error`, and every surface as a blend of the background
+toward the foreground or the accent. A heading color that sits too close to the
+body ink (contrast below 1.12) is replaced by an accent blend, so a dark theme
+cannot render headings and body in the same color.
+
+The same palette is converted to ETAF UI theme tokens and provided to the
+subtree, so shared components (`etaf-check-mark`, `etaf-tag`) follow the
+document's colors instead of the frame's.
+
+A fixed palette also paints the page background; `auto` leaves the Emacs theme
+background in place.
+
+## Update paths
+
+| Change | Update |
+| --- | --- |
+| Fold one section | One fold cell → one section Component |
+| Fold everything | One batch over all fold cells → one flush |
+| Palette | Theme ref → whole document (colors only) |
+| Reading measure | Width ref → reflow, no re-parse |
+| Refresh | New document ref plus fold cells kept by id → one flush |
+| Hidden content | Hidden ref → sections re-render without their fold state changing |
+
+The fold path is the one that has to stay cheap; a regression test asserts that
+folding one section publishes a small buffer update rather than a full one.
+
+## Refresh and follow
+
+A displayed file session registers a file watch and an `after-save-hook`. A
+change schedules a repaint after 250 ms; the watcher is re-armed because some
+backends drop the watch when the file is replaced. Repaint keeps the reading
+section by id, then re-centers. A parse or read failure keeps the last good
+document and reports the error; the preview never goes blank.
+
+Closing the buffer unregisters the watch, cancels a pending repaint and
+unmounts the runtime.
+
+## Performance baseline
+
+Measured in batch on the maintained benchmark (`120` sections, 40 KB, 2753
+rendered lines, 900×50 viewport), Emacs 31, Apple silicon:
+
+| Path | Time |
+| --- | --- |
+| Parse | 27 ms |
+| Mount, every section open | 292 ms |
+| Mount, `overview` (headlines only) | 90 ms |
+| Fold one section and flush | 0.6 ms |
+| Refresh and reparse | 110 ms |
+
+The outline mount is the number that matters for large files: mounting only
+headlines costs about a third of the fully expanded tree, and each expanded
+section adds only its own content. `make benchmark` prints these numbers with
+`ORG_PREVIEW_BENCH_SECTIONS` controlling the size; the registered scenarios in
+`benchmarks/performance-scenarios.el` cover parse, mount, fold and refit for the
+shared performance driver.
+
+## Correctness boundaries
+
+- The parser never signals on malformed input; truncation is a degradation, not
+  an error.
+- Public errors are limited to `etaf-org-preview-error`: a missing source, an
+  unreadable file, an unknown palette, an unknown section or fold state.
+- Rendering performs no I/O: no file reads, no subprocesses, no network.
+- The preview never writes the document. Checkboxes, keywords and cookies are
+  display only.
+
+## Testing
+
+| Layer | What it proves |
+| --- | --- |
+| Document model | Metadata, outline fields, counts, detached snapshots, refresh success and failure |
+| Folding | Three states, hidden bodies, global fold, unknown ids, scoped update size |
+| Rendering | Emphasis faces, entity and subscript spelling, inline links, timestamps, planning, checkboxes, description lists, tables, code, callouts, footnotes, comments, degraded blocks, media placeholders |
+| Display | Palette cycling and rejection, measure clamping, TOC toggle, narrow mount |
+| Navigation | Locate moves point to the heading row of the chosen outline entry |
+
+Every test drives the package through the interfaces declared in
+`etaf-org-preview.el`; none reaches into the parser or the session plist.
+GUI appearance and interaction latency are verified separately in a real
+graphical session, as the workspace rules require.
