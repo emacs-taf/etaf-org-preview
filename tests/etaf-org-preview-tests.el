@@ -455,15 +455,25 @@
                                   (etaf-org-preview-tests--text))))))
 
 (ert-deftest etaf-org-preview-tests-narrow-window-keeps-the-measure ()
-  "A narrow viewport still renders every column without overflowing."
+  "A narrow viewport renders a wide table without overflowing the measure."
   (let ((session (etaf-org-preview-create
-                  :file (etaf-org-preview-tests--fixture "syntax.org")))
+                  :text (concat "* 标题\n"
+                                "| 名称 | 数值 | 备注 |\n"
+                                "|------+------+------|\n"
+                                "| 甲   |   12 | 一段很长很长很长的备注文字 |\n"
+                                "| 乙   |    3 | 另一段同样很长的备注文字 |\n")))
         (buffer nil))
+    ;; A headless mount does not fit the session to its window, so set the
+    ;; measure the application would have fitted before mounting.
+    (etaf-org-preview-adjust-width session -1000)
     (setq buffer (etaf-org-preview-tests--mount session 40))
     (unwind-protect
         (with-current-buffer buffer
-          (should (string-match-p "第一节"
-                                  (etaf-org-preview-tests--text))))
+          (let ((text (etaf-org-preview-tests--text)))
+            (should (string-match-p "名称" text))
+            (should (string-match-p "另一段" text))
+            (dolist (line (split-string text "\n"))
+              (should (<= (string-width line) 44)))))
       (with-current-buffer buffer
         (when (etaf-runtime-for-buffer buffer)
           (etaf-unmount)))

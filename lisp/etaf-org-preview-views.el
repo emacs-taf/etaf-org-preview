@@ -413,97 +413,122 @@ BLOCK's `:label' is what the card says; its `:path' is what activation opens."
 ;;; Blocks
 ;;; ---------------------------------------------------------------------------
 
-(defun etaf-org-preview--table-column-tracks (floors weights)
-  "Return grid tracks from FLOORS and WEIGHTS."
-  (cl-loop for floor in floors
-           for weight in weights
-           collect (list 'minmax (list 'ch (max 3 floor))
-                         (list 'fr (max 4 (min 32 (or weight 4)))))))
+(defun etaf-org-preview--table-column-widths (floors available)
+  "Return the column widths of FLOORS that exactly fill AVAILABLE cells.
+Columns keep their floor when the table fits, share the extra space in
+proportion to that floor, and shrink to three cells when it does not."
+  (let* ((count (length floors))
+         (total (apply #'+ floors)))
+    (cond
+     ((<= total available)
+      (let* ((extra (- available total))
+             (weights (mapcar (lambda (floor) (max 1 floor)) floors))
+             (weight-total (apply #'+ weights))
+             (result (cl-loop for floor in floors
+                              for weight in weights
+                              collect (+ floor
+                                         (floor (* extra (/ (float weight)
+                                                            weight-total)))))))
+        ;; Rounding down leaves a few cells; the last column absorbs them.
+        (setf (car (last result))
+              (+ (car (last result))
+                 (- available (apply #'+ result))))
+        result))
+     (t
+      (let* ((budget (max (* 3 count) available))
+             (result (cl-loop for floor in floors
+                              collect (max 3 (floor (* floor (/ (float budget)
+                                                               total)))))))
+        (while (> (apply #'+ result) budget)
+          (let ((widest (cl-position (apply #'max result) result)))
+            (setf (nth widest result) (1- (nth widest result)))))
+        result)))))
+
+(cl-defun etaf-org-preview--table-row (row env widths &key header last)
+  "Return one table row View of ROW in ENV.
+WIDTHS holds the content width of each column.  HEADER fills the header
+surface and LAST drops the closing rule."
+  (let ((cells nil)
+        (index 0))
+    (dolist (cell (plist-get row :cells))
+      (let ((width (or (nth index widths) 3)))
+        (push (etaf-node 'box
+                         (list :width (list 'ch (+ 2 width))
+                               :flex-shrink 0
+                               :padding '((lh 0) (ch 1))
+                               :wrap-mode 'word
+                               :text-align (or (nth index (plist-get env :table-aligns))
+                                               'left))
+                         (etaf-org-preview--inline-nodes
+                          (plist-get cell :inlines) env
+                          (when header '(:font-weight bold))))
+              cells))
+      (cl-incf index))
+    (etaf-node 'flex
+               (list :width 'stretch :align-items 'start
+                     :background-color (when header
+                                         (etaf-org-preview--color env :table-header))
+                     :border-bottom (unless last
+                                      (list '(px 1) 'solid
+                                            (etaf-org-preview--color env :rule))))
+               (nreverse cells))))
 
 (defun etaf-org-preview--table-view (block env)
-  "Return the table View of BLOCK in ENV."
+  "Return the table View of BLOCK in ENV.
+Rows are flex lines of fixed-width cells, so a wide cell wraps inside its own
+column and the table never grows past the reading measure."
   (let* ((rows (plist-get block :rows))
          (columns (max 1 (or (plist-get block :columns) 1)))
          (aligns (or (plist-get block :aligns) nil))
-         (widths (or (plist-get block :widths) nil))
+         (widths-cookie (or (plist-get block :widths) nil))
          (header-count (or (plist-get block :header-count) 0))
-         (rules (or (plist-get block :rules) nil))
-         (border (list '(px 1) 'solid (etaf-org-preview--color env :border)))
-         (header-rule (list '(px 1) 'solid
-                            (etaf-ui-color-mix
-                             (etaf-org-preview--color env :border)
-                             (etaf-org-preview--color env :ink) 0.35)))
-         (stripe (unless (equal (etaf-org-preview--color env :table-stripe)
-                                (etaf-org-preview--color env :table-header))
-                   (etaf-org-preview--color env :table-stripe)))
          (floors (cl-loop for column from 0 below columns
-                          collect (or (nth column widths)
+                          collect (or (nth column widths-cookie)
                                       (cl-loop for row in rows
                                                maximize (min 24
-                                                             (length
+                                                             (string-width
                                                               (etaf-org-preview-inline-plain-text
                                                                (plist-get
                                                                 (nth column (plist-get row :cells))
                                                                 :inlines))))
                                                into width
-                                               finally return (max 3 width)))))
-         (weights (cl-loop for floor in floors
-                           collect (max 4 (min 32 (round (* floor 1.2))))))
-         (tracks (etaf-org-preview--table-column-tracks floors weights))
-         (last-row (1- (length rows)))
-         (cells nil))
-    (cl-loop for row in rows
-             for row-index from 0
-             do (cl-loop for cell in (plist-get row :cells)
-                         for column-index from 0
-                         do (push
-                             (etaf-node 'box
-                                        (list :padding '((lh 0) (ch 1))
-                                              :min-width (list 'ch (nth column-index floors))
-                                              :width 'stretch
-                                              :overflow 'hidden
-                                              :wrap-mode 'word
-                                              :text-align (or (nth column-index aligns) 'left)
-                                              :border-top
-                                              (and (member row-index rules) border)
-                                              :border-bottom
-                                              (cond ((< row-index (1- header-count)) nil)
-                                                    ((= row-index (1- header-count)) header-rule)
-                                                    ((/= row-index last-row) border))
-                                              :border-right
-                                              (and (/= column-index (1- columns)) border)
-                                              :background-color
-                                              (cond ((< row-index header-count)
-                                                     (etaf-org-preview--color env :table-header))
-                                                    ((and stripe (cl-oddp (- row-index header-count)))
-                                                     stripe)))
-                                        (etaf-org-preview--inline-nodes
-                                         (plist-get cell :inlines) env
-                                         (when (< row-index header-count)
-                                           '(:font-weight bold))))
-                             cells)))
-    (etaf-node 'column
-               (list :width 'stretch :item-gap '(lh 0.5))
-               (append
-                (list
-                 (etaf-node 'box
-                            (list :width 'stretch
-                                  :min-width (list 'ch (+ 2 (apply #'+ floors)))
-                                  :border border)
-                            (list (etaf-node 'grid
-                                             (list :width 'stretch
-                                                   :grid-template-columns tracks)
-                                             (nreverse cells)))))
-                (when-let* ((tblfm (plist-get block :tblfm)))
-                  (list (etaf-node 'text
-                                   (list :color (etaf-org-preview--color env :faint)
-                                         :font-size (etaf-org-preview--scaled env 0.8))
-                                   (list (format "公式未求值：%s" tblfm)))))
-                (when-let* ((caption (plist-get block :caption)))
-                  (list (etaf-node 'text
-                                   (list :color (etaf-org-preview--color env :muted)
-                                         :font-size (etaf-org-preview--scaled env 0.85))
-                                   (list caption))))))))
+                                               finally return (max 2 width)))))
+         (env (plist-put env :table-aligns aligns))
+         (widths (etaf-org-preview--table-column-widths
+                  floors (max 8 (- (or (plist-get env :width) 92)
+                                   (+ 2 (* 2 columns))))))
+         (row-views nil)
+         (index 0))
+    (dolist (row rows)
+      (push (etaf-org-preview--table-row
+             row env widths
+             :header (< index header-count)
+             :last (= index (1- (length rows))))
+            row-views)
+      (cl-incf index))
+    (let ((table (etaf-node 'column
+                            (list :width 'stretch)
+                            (nreverse row-views))))
+      (etaf-node 'column
+                 (list :width 'stretch :item-gap '(lh 0.5))
+                 (append
+                  (list (etaf-node 'box
+                                   (list :width 'stretch
+                                         :border (list '(px 1) 'solid
+                                                       (etaf-org-preview--color env :border))
+                                         :border-radius '(px 4)
+                                         :overflow 'hidden)
+                                   (list table)))
+                  (when-let* ((tblfm (plist-get block :tblfm)))
+                    (list (etaf-node 'text
+                                     (list :color (etaf-org-preview--color env :faint)
+                                           :font-size (etaf-org-preview--scaled env 0.8))
+                                     (list (format "公式未求值：%s" tblfm)))))
+                  (when-let* ((caption (plist-get block :caption)))
+                    (list (etaf-node 'text
+                                     (list :color (etaf-org-preview--color env :muted)
+                                           :font-size (etaf-org-preview--scaled env 0.85))
+                                     (list caption)))))))))
 
 (defun etaf-org-preview--list-marker (item env)
   "Return the marker View of list ITEM in ENV."

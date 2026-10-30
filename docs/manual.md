@@ -117,7 +117,7 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `[@3]` | Overrides the displayed number |
 | `[ ]`, `[-]`, `[X]` | Three marks: an empty box, a dashed box for a task in progress, and a check |
 | `- term :: description` | Term, a faint `::`, then the description |
-| Tables | Full grid, header rule, alignment and width cookies, `<n>` minimum widths; long cells wrap instead of overflowing |
+| Tables | Fixed column grid with a header rule, alignment and width cookies, `<n>` minimum widths; a wide cell wraps inside its column instead of overflowing |
 | Multi-rule tables `|---` | One separator per rule row |
 | `#+BEGIN_SRC` | A code card with its language |
 | `#+BEGIN_EXAMPLE` | A code card without a language |
