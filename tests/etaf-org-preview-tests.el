@@ -173,6 +173,26 @@
         (should-not (string-match-p "子正文" text)))
       (should (etaf-org-preview-folded-p session id)))))
 
+(ert-deftest etaf-org-preview-tests-children-fold-leaves-subheadings-openable ()
+  "A `children' section lists its subheadings, and each one still opens."
+  (let* ((session (etaf-org-preview-create
+                   :text "* 章\n章正文\n** 节\n节正文\n"))
+         (outline (etaf-org-preview-outline session))
+         (chapter (nth 2 (car outline)))
+         (section (nth 2 (cadr outline))))
+    (etaf-org-preview-tests--with-mount session
+      (etaf-org-preview-fold session chapter 'children)
+      (etaf-runtime-flush (etaf-runtime-for-buffer (current-buffer)))
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "节" text))
+        (should-not (string-match-p "章正文" text))
+        (should-not (string-match-p "节正文" text)))
+      (etaf-org-preview-fold session section 'open)
+      (etaf-runtime-flush (etaf-runtime-for-buffer (current-buffer)))
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "节正文" text))
+        (should-not (string-match-p "章正文" text))))))
+
 (ert-deftest etaf-org-preview-tests-fold-children-keeps-child-headlines ()
   "The `children' state shows child headlines without either body."
   (let* ((session (etaf-org-preview-create

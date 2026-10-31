@@ -96,9 +96,10 @@ Three states:
 | `children` | The above plus child headline Components; the body is skipped |
 | `open` | Body blocks and children |
 
-A parent in `children` forces its children to render `folded`, so a whole
-subtree stays closed without writing a second state. `C-c f` writes every cell
-in one `etaf-batch`, so the document repaints once.
+Entering `children` also writes every descendant cell as `folded` in the same
+`etaf-batch`, so the subtree starts closed; each child then renders from its
+own cell, and opening one reveals only that child's body. `C-c f` writes every
+cell in one batch, so the document repaints once.
 
 The initial state comes from `#+STARTUP:`; `overview` renders headlines only,
 `content` opens everything. A document larger than

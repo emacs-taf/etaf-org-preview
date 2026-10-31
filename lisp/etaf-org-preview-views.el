@@ -1064,14 +1064,14 @@ The row is the fold affordance: pressing it cycles the section."
   "Return the body Views of SECTION in ENV."
   (etaf-org-preview--block-views (etaf-org-preview-section-body section) env))
 
-(etaf-define-component etaf-org-preview-section (&key section fold hidden env forced)
+(etaf-define-component etaf-org-preview-section (&key section fold hidden env)
   "Render one headline SECTION with its own fold cell.
 FOLD is the section's fold ref, read here so a fold repaints this section only.
-HIDDEN reveals comments, properties and archives.  FORCED, when `folded',
-hides the body regardless of the section's own state, which is how a parent in
-the `children' state shows its children's headlines only."
+HIDDEN reveals comments, properties and archives.  A parent in the `children'
+state renders its children through their own cells; entering that state folds
+them in one batch, so their bodies stay hidden until a reader opens one."
   :render
-  (let* ((state (or forced (etaf-value fold)))
+  (let* ((state (etaf-value fold))
          (open (eq state 'open))
          (children (and (not (eq state 'folded))
                         (etaf-org-preview-section-children section)))
@@ -1101,8 +1101,7 @@ the `children' state shows its children's headlines only."
                              :fold (etaf-org-preview--fold-ref env
                                                                (etaf-org-preview-section-id child))
                              :hidden hidden
-                             :env env
-                             :forced (if (eq state 'children) 'folded forced))
+                             :env env)
                        nil)
             views))
     (etaf-node 'column
@@ -1293,8 +1292,7 @@ the section it changes."
                                                        env
                                                        (etaf-org-preview-section-id section))
                                                 :hidden (plist-get env :hidden-ref)
-                                                :env env
-                                                :forced nil)
+                                                :env env)
                                           nil))
                              sections)
                             (list (etaf-org-preview--footnotes-view document env))))))))

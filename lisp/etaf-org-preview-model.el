@@ -268,8 +268,9 @@ sees, so a reload never surprises the reader by reopening a subtree."
 
 (defun etaf-org-preview-fold (session id state)
   "Set the fold STATE of SESSION's section ID and return SESSION.
-STATE is `folded', `children' or `open'.  Only the section's own cell is
-written, so exactly one section repaints."
+STATE is `folded', `children' or `open'.  The section's cell is written, and
+`children' also folds its descendants in the same batch so the subtree starts
+compact; the reader can open any child afterwards."
   (unless (memq state '(folded children open))
     (signal 'etaf-org-preview-error
             (list (format "Unknown fold state: %S" state))))
@@ -277,7 +278,18 @@ written, so exactly one section repaints."
     (unless cell
       (signal 'etaf-org-preview-error
               (list (format "Unknown section: %s" id))))
-    (etaf-set-value cell state))
+    (if (eq state 'children)
+        (etaf-batch
+          (when-let* ((section (etaf-org-preview--section-by-id session id)))
+            (etaf-org-preview--walk-sections
+             (etaf-org-preview-section-children section)
+             (lambda (child)
+               (when-let* ((child-cell (etaf-org-preview--fold-cell
+                                        session
+                                        (etaf-org-preview-section-id child))))
+                 (etaf-set-value child-cell 'folded)))))
+          (etaf-set-value cell state))
+      (etaf-set-value cell state)))
   session)
 
 (defun etaf-org-preview-folded-p (session id)

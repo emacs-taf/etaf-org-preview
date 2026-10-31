@@ -55,7 +55,8 @@ Every headline has three states:
 | `open` | The headline, its body and its children |
 
 `C-c TAB` cycles `folded → children → open → folded`; a headline without
-children skips `children`. `C-c f` switches the whole document between the
+children skips `children`. Entering `children` closes the whole subtree, and
+each child headline can then be opened on its own. `C-c f` switches the whole document between the
 outline and the full view.
 
 Folding is structural. A closed section is not rendered, so its images are
