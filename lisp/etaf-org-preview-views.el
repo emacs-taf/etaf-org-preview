@@ -419,8 +419,8 @@ BLOCK's `:label' is what the card says; its `:path' is what activation opens."
 (defun etaf-org-preview--table-column-widths (floors available)
   "Return the column widths of FLOORS inside AVAILABLE cells.
 A table that fits keeps its natural width, so a short table stays compact.
-A wide table shrinks its columns to three cells at least and wraps the cells
-that remain too long."
+A wide table shrinks its columns to three cells at least, then hands the
+cells left by rounding back to columns that are still below their floor."
   (let* ((count (length floors))
          (total (apply #'+ floors)))
     (if (<= total available)
@@ -428,18 +428,35 @@ that remain too long."
       (let* ((budget (max (* 3 count) available))
              (result (cl-loop for floor in floors
                               collect (max 3 (floor (* floor (/ (float budget)
-                                                               total)))))))
+                                                               total))))))
+             (leftover (- budget (apply #'+ result))))
         (while (> (apply #'+ result) budget)
           (let ((widest (cl-position (apply #'max result) result)))
             (setf (nth widest result) (1- (nth widest result)))))
+        ;; Rounding down leaves cells unspent; a column that can still use
+        ;; one keeps its text on fewer lines.
+        (cl-loop for index from 0 below count
+                 while (> leftover 0)
+                 when (< (nth index result) (nth index floors))
+                 do (setf (nth index result) (1+ (nth index result)))
+                 and do (cl-decf leftover))
         result))))
 
 (cl-defun etaf-org-preview--table-row (row env widths &key header last)
   "Return one table row View of ROW in ENV.
 WIDTHS holds the content width of each column.  HEADER fills the header
 surface and LAST drops the closing rule."
-  (let ((cells nil)
-        (index 0))
+  (let* ((cell-count (length (plist-get row :cells)))
+         (separator (etaf-node 'box
+                               (list :width '(px 1)
+                                     :flex-shrink 0
+                                     :align-self 'stretch
+                                     :background-color
+                                     (etaf-org-preview--color
+                                      env (if header :border :rule)))
+                               nil))
+         (cells nil)
+         (index 0))
     (dolist (cell (plist-get row :cells))
       (let ((width (or (nth index widths) 3)))
         (push (etaf-node 'box
@@ -453,6 +470,8 @@ surface and LAST drops the closing rule."
                           (plist-get cell :inlines) env
                           (when header '(:font-weight bold))))
               cells))
+      (when (< index (1- cell-count))
+        (push separator cells))
       (cl-incf index))
     (etaf-node 'flex
                (list :width 'stretch :align-items 'start
@@ -485,9 +504,11 @@ column and the table never grows past the reading measure."
                                                into width
                                                finally return (max 2 width)))))
          (env (plist-put env :table-aligns aligns))
+         (separator-cells
+          (ceiling (1- columns) (max 1 (frame-char-width))))
          (widths (etaf-org-preview--table-column-widths
                   floors (max 8 (- (or (plist-get env :width) 92)
-                                   (+ 2 (* 2 columns))))))
+                                   (+ 2 (* 2 columns) separator-cells)))))
          (row-views nil)
          (index 0))
     (dolist (row rows)
@@ -497,7 +518,7 @@ column and the table never grows past the reading measure."
              :last (= index (1- (length rows))))
             row-views)
       (cl-incf index))
-    (let* ((total (+ 2 (* 2 columns) (apply #'+ widths)))
+    (let* ((total (+ 2 (* 2 columns) (apply #'+ widths) separator-cells))
            (table (etaf-node 'column
                              (list :width 'stretch)
                              (nreverse row-views))))
