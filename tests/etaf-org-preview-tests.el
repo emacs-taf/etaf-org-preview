@@ -72,6 +72,17 @@
 
 ;;; Document model
 
+(ert-deftest etaf-org-preview-tests-file-title-drops-the-extension ()
+  "A document without a title reads as its file name, without the suffix."
+  (let ((file (make-temp-file "org-preview-title" nil ".org")))
+    (unwind-protect
+        (progn
+          (with-temp-file file (insert "* 一节\n正文\n"))
+          (let ((session (etaf-org-preview-create :file file)))
+            (should (equal (plist-get (etaf-org-preview-state session) :title)
+                           (file-name-base file)))))
+      (delete-file file))))
+
 (ert-deftest etaf-org-preview-tests-metadata-and-counts ()
   "A document reports its own metadata, outline and status counts."
   (let* ((session (etaf-org-preview-create

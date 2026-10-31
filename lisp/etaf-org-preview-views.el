@@ -1171,52 +1171,52 @@ them in one batch, so their bodies stay hidden until a reader opens one."
                                          :font-size (etaf-org-preview--scaled env 0.82))
                                    (list "文档较大，已按大纲展开"))))))))
 
+(defun etaf-org-preview--toc-row (entry base env)
+  "Return one table of contents row for ENTRY under BASE indentation."
+  (etaf-node 'box
+             (list :width 'stretch
+                   :padding-left (list 'ch (* 2 (max 0 (- (nth 0 entry) base))))
+                   :role 'button
+                   :tab-index 0
+                   :pointer 'hand
+                   :help-echo "跳到这一节"
+                   :on-press (lambda ()
+                               (etaf-org-preview--act env :locate (nth 2 entry))))
+             (list (etaf-node 'text
+                              (list :color (etaf-org-preview--color env :muted)
+                                    :font-size (etaf-org-preview--scaled env 0.95))
+                              (list (nth 1 entry))))))
+
 (defun etaf-org-preview--toc-view (document env)
-  "Return the table of contents of DOCUMENT in ENV."
+  "Return the table of contents of DOCUMENT in ENV.
+Entries indent relative to the shallowest heading the document uses, so a book
+whose chapters start at level three still reads as a flat list.  The contents
+sit directly on the page: a small label and quiet rows, without a card."
   (when-let* ((depth (plist-get env :toc-depth)))
     (let ((entries (cl-remove-if-not
                     (lambda (entry) (<= (nth 0 entry) depth))
                     (plist-get document :outline))))
       (when entries
-        (etaf-node 'box
-                   (list :width 'stretch
-                         :background-color (etaf-org-preview--color env :panel)
-                         :border (list '(px 1) 'solid
-                                       (etaf-org-preview--color env :border))
-                         :border-radius '(px 4)
-                         :padding '((lh 1) (ch 2))
-                         :margin-top '(lh 1)
-                         :margin-bottom '(lh 1))
-                   (list
-                    (etaf-node 'column
-                               (list :width 'stretch :item-gap '(lh 0.25))
-                               (append
-                                (list (etaf-node 'text
-                                                 (list :color (etaf-org-preview--color env :muted)
-                                                       :font-size (etaf-org-preview--scaled
-                                                                   env 0.82)
-                                                       :font-weight 'bold)
-                                                 (list "目录")))
-                                (mapcar
-                                 (lambda (entry)
-                                   (etaf-node 'box
-                                              (list :width 'stretch
-                                                    :padding-left
-                                                    (list 'ch (* 2 (max 0 (1- (nth 0 entry)))))
-                                                    :on-press
-                                                    (lambda ()
-                                                      (etaf-org-preview--act
-                                                       env :locate (nth 2 entry)))
-                                                    :role 'button :tab-index 0
-                                                    :pointer 'hand
-                                                    :help-echo "跳到这一节")
-                                              (list (etaf-node 'text
-                                                               (list :color
-                                                                     (etaf-org-preview--color env :ink)
-                                                                     :font-size
-                                                                     (etaf-org-preview--scaled env 0.92))
-                                                               (list (nth 1 entry))))))
-                                 entries)))))))))
+        (let* ((base (apply #'min (mapcar (lambda (entry) (nth 0 entry)) entries)))
+               (rows (mapcar (lambda (entry)
+                               (etaf-org-preview--toc-row entry base env))
+                             entries)))
+          (etaf-node 'box
+                     (list :width 'stretch
+                           :border-left (list '(px 2) 'solid
+                                              (etaf-org-preview--color env :rule))
+                           :padding-left '(ch 2)
+                           :margin-top '(lh 0.5)
+                           :margin-bottom '(lh 1))
+                     (list
+                      (etaf-node 'text
+                                 (list :color (etaf-org-preview--color env :muted)
+                                       :font-size (etaf-org-preview--scaled env 0.82)
+                                       :font-weight 'bold)
+                                 (list "目录"))
+                      (etaf-node 'box
+                                 (list :width 'stretch :height '(lh 0.5)) nil)
+                      (etaf-node 'column (list :width 'stretch) rows))))))))
 
 (defun etaf-org-preview--footnotes-view (document env)
   "Return the footnote section of DOCUMENT in ENV."

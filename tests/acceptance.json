@@ -11,6 +11,11 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-org-preview-tests-file-title-drops-the-extension",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A document without a title names itself by its file, without the .org suffix."
+    },
+    {
       "name": "etaf-org-preview-tests-children-fold-leaves-subheadings-openable",
       "file": "tests/etaf-org-preview-tests.el",
       "purpose": "A section shown as children still lets its subheadings open."
