@@ -383,6 +383,35 @@
         (should (string-match-p "\\[1\\]" text))
         (should (string-match-p "脚注正文" text))))))
 
+(ert-deftest etaf-org-preview-tests-footnotes-in-lists-share-one-sequence ()
+  "References inside list items number in document order."
+  (let* ((session (etaf-org-preview-create
+                   :text (concat "* 一节\n"
+                                 "1. 甲[fn:alpha]。\n"
+                                 "2. 乙[fn:beta]。\n\n"
+                                 "[fn:alpha] 第一个定义。\n\n"
+                                 "[fn:beta] 第二个定义。\n")))
+         (state (etaf-org-preview-state session)))
+    (should (equal (plist-get state :footnotes) '("alpha" "beta")))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "甲\\[1\\]" text))
+        (should (string-match-p "乙\\[2\\]" text))
+        (should (string-match-p "第一个定义" text))
+        (should (string-match-p "第二个定义" text))))))
+
+(ert-deftest etaf-org-preview-tests-toc-skips-commented-sections ()
+  "A COMMENT headline stays out of the table of contents."
+  (let ((session (etaf-org-preview-create
+                  :text "* 可见\n正文\n* COMMENT 草稿\n隐藏的内容\n")))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (with-temp-buffer
+          (insert text)
+          (goto-char (point-min))
+          (should (= 1 (how-many "草稿"))))
+        (should-not (string-match-p "隐藏的内容" text))))))
+
 (ert-deftest etaf-org-preview-tests-comments-are-folded-initially ()
   "A COMMENT headline starts folded and reveals its body on request."
   (let* ((session (etaf-org-preview-create

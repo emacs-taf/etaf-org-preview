@@ -335,22 +335,22 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
 ;;; ---------------------------------------------------------------------------
 
 (defun etaf-org-preview--grid-for-pixels (env pixels)
-  "Return (COLUMNS . ROWS) for PIXELS in ENV's reading measure."
+  "Return (COLUMNS . ROWS) for PIXELS in ENV's reading measure.
+The image keeps its aspect ratio: its natural cell size is reduced until both
+dimensions fit, first the reading measure and then the row budget."
   (let* ((max-columns (max 8 (- (or (plist-get env :width) 92) 4)))
+         (max-rows (or (plist-get env :image-max-rows) 24))
          (char-width (max 1 (frame-char-width)))
-         (char-height (max 1 (frame-char-height)))
-         (max-rows (or (plist-get env :image-max-rows) 24)))
+         (char-height (max 1 (frame-char-height))))
     (if pixels
-        (let* ((width (car pixels))
-               (height (cdr pixels))
-               (columns (min max-columns (max 4 (round (/ (* 1.0 width) char-width)))))
-               (rows (max 1 (round (/ (* 1.0 height char-width)
-                                      (* (max 1 width) char-height)))))
-               (rows (min rows max-rows))
-               (columns (min columns
-                             (max 4 (round (/ (* 1.0 rows char-height width)
-                                              (max 1 height char-width)))))))
-          (cons columns rows))
+        (let* ((width (max 1 (car pixels)))
+               (height (max 1 (cdr pixels)))
+               (columns (max 4 (round (/ (* 1.0 width) char-width))))
+               (rows (max 1 (round (/ (* 1.0 height) char-height))))
+               (scale (min 1.0 (/ (float max-columns) columns)
+                           (/ (float max-rows) rows))))
+          (cons (max 4 (round (* columns scale)))
+                (max 1 (round (* rows scale)))))
       (cons (min 48 max-columns) 12))))
 
 (defun etaf-org-preview--image-card (media env)
@@ -417,27 +417,14 @@ BLOCK's `:label' is what the card says; its `:path' is what activation opens."
 ;;; ---------------------------------------------------------------------------
 
 (defun etaf-org-preview--table-column-widths (floors available)
-  "Return the column widths of FLOORS that exactly fill AVAILABLE cells.
-Columns keep their floor when the table fits, share the extra space in
-proportion to that floor, and shrink to three cells when it does not."
+  "Return the column widths of FLOORS inside AVAILABLE cells.
+A table that fits keeps its natural width, so a short table stays compact.
+A wide table shrinks its columns to three cells at least and wraps the cells
+that remain too long."
   (let* ((count (length floors))
          (total (apply #'+ floors)))
-    (cond
-     ((<= total available)
-      (let* ((extra (- available total))
-             (weights (mapcar (lambda (floor) (max 1 floor)) floors))
-             (weight-total (apply #'+ weights))
-             (result (cl-loop for floor in floors
-                              for weight in weights
-                              collect (+ floor
-                                         (floor (* extra (/ (float weight)
-                                                            weight-total)))))))
-        ;; Rounding down leaves a few cells; the last column absorbs them.
-        (setf (car (last result))
-              (+ (car (last result))
-                 (- available (apply #'+ result))))
-        result))
-     (t
+    (if (<= total available)
+        floors
       (let* ((budget (max (* 3 count) available))
              (result (cl-loop for floor in floors
                               collect (max 3 (floor (* floor (/ (float budget)
@@ -445,7 +432,7 @@ proportion to that floor, and shrink to three cells when it does not."
         (while (> (apply #'+ result) budget)
           (let ((widest (cl-position (apply #'max result) result)))
             (setf (nth widest result) (1- (nth widest result)))))
-        result)))))
+        result))))
 
 (cl-defun etaf-org-preview--table-row (row env widths &key header last)
   "Return one table row View of ROW in ENV.
@@ -473,7 +460,8 @@ surface and LAST drops the closing rule."
                                          (etaf-org-preview--color env :table-header))
                      :border-bottom (unless last
                                       (list '(px 1) 'solid
-                                            (etaf-org-preview--color env :rule))))
+                                            (etaf-org-preview--color
+                                             env (if header :border :rule)))))
                (nreverse cells))))
 
 (defun etaf-org-preview--table-view (block env)
@@ -509,14 +497,15 @@ column and the table never grows past the reading measure."
              :last (= index (1- (length rows))))
             row-views)
       (cl-incf index))
-    (let ((table (etaf-node 'column
-                            (list :width 'stretch)
-                            (nreverse row-views))))
+    (let* ((total (+ 2 (* 2 columns) (apply #'+ widths)))
+           (table (etaf-node 'column
+                             (list :width 'stretch)
+                             (nreverse row-views))))
       (etaf-node 'column
                  (list :width 'stretch :item-gap '(lh 0.5))
                  (append
                   (list (etaf-node 'box
-                                   (list :width 'stretch
+                                   (list :width (list 'ch total)
                                          :border (list '(px 1) 'solid
                                                        (etaf-org-preview--color env :border))
                                          :border-radius '(px 4)
@@ -589,12 +578,9 @@ A nested list gets two extra cells, so each level reads as one step in."
                                           :max-width (list 'ch 32))
                                     (etaf-org-preview--inline-nodes term env
                                                                     '(:font-weight bold)))
-                         (etaf-node 'box
-                                    (list :width '(ch 2) :flex-shrink 0)
-                                    (list (etaf-node 'text
-                                                     (list :color (etaf-org-preview--color
-                                                                   env :faint))
-                                                     (list "::"))))
+                         (etaf-node 'text
+                                    (list :color (etaf-org-preview--color env :faint))
+                                    (list "："))
                          (etaf-node 'column
                                     (list :width 'stretch :min-width '(ch 0)
                                           :item-gap '(lh 0.5))
@@ -1193,9 +1179,20 @@ Entries indent relative to the shallowest heading the document uses, so a book
 whose chapters start at level three still reads as a flat list.  The contents
 sit directly on the page: a small label and quiet rows, without a card."
   (when-let* ((depth (plist-get env :toc-depth)))
-    (let ((entries (cl-remove-if-not
-                    (lambda (entry) (<= (nth 0 entry) depth))
-                    (plist-get document :outline))))
+    (let* ((commented (make-hash-table :test #'equal))
+           (entries nil))
+      (cl-labels ((walk (sections)
+                    (dolist (section sections)
+                      (when (etaf-org-preview-section-commented section)
+                        (puthash (etaf-org-preview-section-id section)
+                                 t commented))
+                      (walk (etaf-org-preview-section-children section)))))
+        (walk (plist-get document :sections)))
+      (setq entries (cl-remove-if
+                     (lambda (entry)
+                       (or (> (nth 0 entry) depth)
+                           (gethash (nth 2 entry) commented)))
+                     (plist-get document :outline)))
       (when entries
         (let* ((base (apply #'min (mapcar (lambda (entry) (nth 0 entry)) entries)))
                (rows (mapcar (lambda (entry)

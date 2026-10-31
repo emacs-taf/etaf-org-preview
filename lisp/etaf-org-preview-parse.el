@@ -31,6 +31,15 @@
 ;;; Context and records
 ;;; ---------------------------------------------------------------------------
 
+(cl-defstruct (etaf-org-preview-footnotes
+               (:constructor etaf-org-preview--make-footnotes))
+  "Footnote registry shared by every context derived from one document.
+Copies of a parsing context share this object, so a reference inside a list
+item and a definition in another section still count in one sequence."
+  (counter 0)
+  (order nil)
+  (entries (make-hash-table :test #'equal)))
+
 (cl-defstruct (etaf-org-preview-ctx (:constructor etaf-org-preview--make-ctx))
   (lines [])
   (end 0)
@@ -51,9 +60,7 @@
   (macros nil)
   (link-abbrevs nil)
   (degraded (make-hash-table :test #'equal))
-  (footnotes (make-hash-table :test #'equal))
-  (footnote-order nil)
-  (footnote-counter 0)
+  (footnotes (etaf-org-preview--make-footnotes))
   (targets (make-hash-table :test #'equal))
   (current-section nil))
 
@@ -495,16 +502,18 @@ Return (NODE . NEXT) or nil."
 
 (defun etaf-org-preview--footnote-register (ctx label inlines)
   "Register footnote LABEL with INLINES in CTX and return its number."
-  (let ((existing (gethash label (etaf-org-preview-ctx-footnotes ctx))))
+  (let* ((registry (etaf-org-preview-ctx-footnotes ctx))
+         (entries (etaf-org-preview-footnotes-entries registry))
+         (existing (gethash label entries)))
     (if existing
         (progn
           (when inlines
             (plist-put existing :inlines inlines))
           (plist-get existing :number))
-      (let ((number (cl-incf (etaf-org-preview-ctx-footnote-counter ctx))))
+      (let ((number (cl-incf (etaf-org-preview-footnotes-counter registry))))
         (puthash label (list :label label :number number :inlines inlines)
-                 (etaf-org-preview-ctx-footnotes ctx))
-        (push label (etaf-org-preview-ctx-footnote-order ctx))
+                 entries)
+        (push label (etaf-org-preview-footnotes-order registry))
         number))))
 
 (defun etaf-org-preview--inline-at-footnote (ctx string start)
@@ -519,7 +528,9 @@ Return (NODE . NEXT) or nil."
                (label (if colon (substring body 0 colon) body))
                (definition (and colon (substring body (1+ colon))))
                (label (if (string-empty-p label)
-                          (format "anon-%d" (1+ (etaf-org-preview-ctx-footnote-counter ctx)))
+                          (format "anon-%d"
+                                  (1+ (etaf-org-preview-footnotes-counter
+                                       (etaf-org-preview-ctx-footnotes ctx))))
                         label))
                (number (etaf-org-preview--footnote-register
                         ctx label
@@ -1787,10 +1798,12 @@ fold state used when the document names none."
 
 (defun etaf-org-preview--footnote-list (ctx)
   "Return CTX's footnotes as a list of plists in numbering order."
-  (let ((order (reverse (etaf-org-preview-ctx-footnote-order ctx)))
-        (result nil))
+  (let* ((registry (etaf-org-preview-ctx-footnotes ctx))
+         (order (reverse (etaf-org-preview-footnotes-order registry)))
+         (entries (etaf-org-preview-footnotes-entries registry))
+         (result nil))
     (dolist (label order)
-      (when-let* ((entry (gethash label (etaf-org-preview-ctx-footnotes ctx))))
+      (when-let* ((entry (gethash label entries)))
         (unless (plist-get entry :inlines)
           (plist-put entry :inlines (list (etaf-org-preview--text-node
                                            (format "（脚注 %s 没有定义）" label)))))

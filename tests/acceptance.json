@@ -11,6 +11,16 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-org-preview-tests-footnotes-in-lists-share-one-sequence",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "Footnote references inside list items share the document sequence."
+    },
+    {
+      "name": "etaf-org-preview-tests-toc-skips-commented-sections",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A COMMENT section stays out of the table of contents and stays folded."
+    },
+    {
       "name": "etaf-org-preview-tests-file-title-drops-the-extension",
       "file": "tests/etaf-org-preview-tests.el",
       "purpose": "A document without a title names itself by its file, without the .org suffix."
