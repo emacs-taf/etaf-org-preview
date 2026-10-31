@@ -100,12 +100,15 @@ labels rather than as words with a fill."
   (if (> level 4) (min 4 (- level 4)) 0))
 
 (defun etaf-org-preview--heading-gap (_env level)
-  "Return the space above a LEVEL heading."
+  "Return the space above a LEVEL heading, in body lines.
+The gap separates sections without pushing a collapsed outline apart: a level
+one section opens with two body lines, and each deeper level adds less."
   (list 'lh (pcase level
-              (1 3.0)
-              (2 2.0)
-              (3 1.5)
-              (_ 1.0))))
+              (1 1.6)
+              (2 1.2)
+              (3 0.9)
+              (4 0.6)
+              (_ 0.45))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Inline rendering
@@ -1058,7 +1061,7 @@ The row is the fold affordance: pressing it cycles the section."
                      :help-echo "按 RET 折叠或展开这一节")
                (append (list row)
                        (when (<= level 2)
-                         (list (etaf-org-preview--rule env 0.75)))))))
+                         (list (etaf-org-preview--rule env 0.3)))))))
 
 (defun etaf-org-preview--section-body-views (section env)
   "Return the body Views of SECTION in ENV."
