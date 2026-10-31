@@ -181,15 +181,28 @@ SESSION defaults to the current preview buffer's session."
 ;;; Window fitting
 ;;; ---------------------------------------------------------------------------
 
-(defun etaf-org-preview--fit-width (session)
-  "Set SESSION's reading measure from the window that shows it."
+(defun etaf-org-preview--fit-width (session &optional window)
+  "Set SESSION's reading measure from WINDOW, or from the one showing it.
+The framework calls this on every window change, so the measure follows a
+resize instead of keeping the width the document was opened at."
   (let* ((buffer (plist-get session :buffer))
-         (window (and (buffer-live-p buffer) (get-buffer-window buffer t))))
+         (window (or (and (window-live-p window) window)
+                     (and (buffer-live-p buffer) (get-buffer-window buffer t)))))
     (if (window-live-p window)
-        (let ((width (max etaf-org-preview-width-min
-                          (min etaf-org-preview-width-max
-                               (- (window-body-width window)
-                                  (* 2 etaf-org-preview--measure-gutter))))))
+        (let* ((body (window-body-width window))
+               (gutter (* 2 etaf-org-preview--measure-gutter))
+               (width
+                (cond
+                 ;; A window that holds the minimum measure and its gutters
+                 ;; gets the usual clamp.
+                 ((>= body (+ etaf-org-preview-width-min gutter))
+                  (min etaf-org-preview-width-max (- body gutter)))
+                 ;; Below that the gutters go first, then the measure may
+                 ;; shrink under its preferred minimum so the page still
+                 ;; reflows instead of scrolling sideways.
+                 ((>= body etaf-org-preview-width-min)
+                  etaf-org-preview-width-min)
+                 (t (max 12 body)))))
           (etaf-org-preview--write session :width width)
           width)
       (etaf-org-preview--read session :width))))
@@ -258,8 +271,7 @@ selected instead of rendered twice."
 
 (defun etaf-org-preview--display (session name)
   "Open SESSION as the application buffer NAME and return it."
-  (let* ((measured nil)
-         (buffer
+  (let* ((buffer
           (etaf-app-open
            name
            (etaf-view (etaf-org-preview-app :session session
@@ -267,11 +279,9 @@ selected instead of rendered twice."
            :state session
            :mode-line t
            :background (lambda () (etaf-org-preview--page-background session))
-           :on-fit (lambda (_window)
-                     (unless measured
-                       (setq measured t)
-                       (plist-put session :buffer (current-buffer))
-                       (etaf-org-preview--fit-width session)))
+           :on-fit (lambda (window)
+                     (plist-put session :buffer (current-buffer))
+                     (etaf-org-preview--fit-width session window))
            :on-close (lambda ()
                        (etaf-org-preview--follow-unregister
                         (plist-get session :file))

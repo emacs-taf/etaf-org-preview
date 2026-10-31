@@ -184,7 +184,7 @@ shows the path or URL instead of failing.
 | Control | Effect |
 | --- | --- |
 | Palette | `t` cycles `light`, `sepia`, `dark`; `etaf-org-preview-set-theme` accepts `auto` to follow the frame's faces again |
-| Reading measure | `[` and `]` change the maximum; a narrower window always fills the available columns |
+| Reading measure | `[` and `]` change the maximum; a resize refits the measure, a narrower window fills the available columns, and below the preferred minimum the page keeps reflowing instead of scrolling sideways |
 | Table of contents | `C-c t`; depth comes from `#+OPTIONS: toc` (default 2) |
 | Hidden content | `C-c v` reveals comment lines, comment blocks, property drawers and metadata keywords |
 
