@@ -1102,7 +1102,9 @@ them in one batch, so their bodies stay hidden until a reader opens one."
 ;;; ---------------------------------------------------------------------------
 
 (defun etaf-org-preview--hero-view (document env)
-  "Return the title block of DOCUMENT in ENV."
+  "Return the title block of DOCUMENT in ENV.
+The title, the subtitle and the byline get one line of air each, so the
+opening reads as a title page instead of a stack of metadata."
   (let* ((title (or (plist-get document :title)
                     (plist-get env :fallback-title)
                     "Org 文档"))
@@ -1112,47 +1114,81 @@ them in one batch, so their bodies stay hidden until a reader opens one."
          (modified (plist-get env :modified))
          (keywords (plist-get document :keywords))
          (filetags (plist-get document :filetags))
-         (meta (string-join (delq nil (list author date modified)) " · "))
+         (byline (string-join (delq nil (list author date)) " · "))
          (degraded (plist-get document :degraded)))
     (etaf-node 'column
-               (list :width 'stretch :item-gap '(lh 0.5))
+               (list :width 'stretch)
                (append
                 (list
                  (etaf-node 'text
                             (list :color (etaf-org-preview--color env :heading)
-                                  :font-size (etaf-org-preview--scaled env 1.70)
+                                  :font-size (etaf-org-preview--scaled env 1.65)
                                   :font-weight 'bold)
                             (list title)))
                 (when (and subtitle (not (string-empty-p subtitle)))
-                  (list (etaf-node 'text
+                  (list (etaf-org-preview--spacer 1)
+                        (etaf-node 'text
                                    (list :color (etaf-org-preview--color env :muted)
-                                         :font-size (etaf-org-preview--scaled env 1.15))
+                                         :font-size (etaf-org-preview--scaled env 1.12))
                                    (list subtitle))))
-                (when (not (string-empty-p meta))
-                  (list (etaf-node 'text
-                                   (list :color (etaf-org-preview--color env :muted)
-                                         :font-size (etaf-org-preview--scaled env 0.9))
-                                   (list meta))))
+                (when (or (not (string-empty-p byline)) modified)
+                  (list (etaf-org-preview--spacer 1)
+                        (etaf-node 'flex
+                                   (list :width 'stretch
+                                         :gap '((lh 0) (ch 1))
+                                         :align-items 'center
+                                         :flex-wrap 'wrap)
+                                   (append
+                                    (when (not (string-empty-p byline))
+                                      (list (etaf-node 'text
+                                                       (list :color (etaf-org-preview--color
+                                                                     env :faint)
+                                                             :font-size
+                                                             (etaf-org-preview--scaled env 0.85))
+                                                       (list byline))))
+                                    (when (and modified
+                                               (not (string-empty-p byline)))
+                                      (list (etaf-node 'text
+                                                       (list :color (etaf-org-preview--color
+                                                                     env :faint))
+                                                       (list "·"))))
+                                    (when modified
+                                      (list (etaf-node 'text
+                                                       (list :color (etaf-org-preview--color
+                                                                     env :faint)
+                                                             :font-size
+                                                             (etaf-org-preview--scaled env 0.78))
+                                                       (list modified))))))))
                 (when (or keywords filetags)
-                  (list (etaf-node 'flex
-                                   (list :width 'stretch :gap '((lh 0.5) (ch 1))
+                  (list (etaf-org-preview--spacer 1)
+                        (etaf-node 'flex
+                                   (list :width 'stretch
+                                         :gap '((lh 0.5) (ch 1))
+                                         :align-items 'center
                                          :flex-wrap 'wrap)
                                    (append
                                     (mapcar (lambda (keyword)
                                               (etaf-org-preview--chip
                                                env keyword :muted :panel))
                                             keywords)
-                                    (mapcar (lambda (tag)
-                                              (etaf-org-preview--chip
-                                               env (concat "#" tag)
-                                               :accent :accent-soft))
-                                            filetags)))))
+                                    (when filetags
+                                      (list (etaf-node 'text
+                                                       (list :color (etaf-org-preview--color
+                                                                     env :faint)
+                                                             :font-size
+                                                             (etaf-org-preview--scaled env 0.82))
+                                                       (list (string-join
+                                                              (mapcar (lambda (tag)
+                                                                        (concat "#" tag))
+                                                                      filetags)
+                                                              " ")))))))))
                 (when (> (or degraded 0) 0)
-                  (list (etaf-org-preview--chip
-                         env (format "%d 处已降级" degraded)
-                         :muted :panel)))
+                  (list (etaf-org-preview--spacer 0.5)
+                        (etaf-org-preview--chip
+                         env (format "%d 处已降级" degraded) :muted :panel)))
                 (when (plist-get env :large-document)
-                  (list (etaf-node 'text
+                  (list (etaf-org-preview--spacer 0.5)
+                        (etaf-node 'text
                                    (list :color (etaf-org-preview--color env :faint)
                                          :font-size (etaf-org-preview--scaled env 0.82))
                                    (list "文档较大，已按大纲展开"))))))))
