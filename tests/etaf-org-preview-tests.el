@@ -514,6 +514,26 @@
       (should-not (string-match-p "目录"
                                   (etaf-org-preview-tests--text))))))
 
+(ert-deftest etaf-org-preview-tests-narrow-heading-keeps-its-chips ()
+  "A narrow measure keeps the keyword, priority and title of a heading."
+  (let* ((session (etaf-org-preview-create
+                   :text (concat "* TODO [#A] 带计划与标签的标题          :work:urgent:\n"
+                                 "  正文\n")))
+         (buffer nil))
+    (etaf-org-preview-adjust-width session -1000)
+    (setq buffer (etaf-org-preview-tests--mount session 40))
+    (unwind-protect
+        (with-current-buffer buffer
+          (let ((text (etaf-org-preview-tests--text)))
+            (should (string-match-p "TODO" text))
+            (should (string-match-p "#A" text))
+            (should (string-match-p "带计划与标签的标题" text))
+            (should (string-match-p ":work:" text))))
+      (with-current-buffer buffer
+        (when (etaf-runtime-for-buffer buffer)
+          (etaf-unmount)))
+      (kill-buffer buffer))))
+
 (ert-deftest etaf-org-preview-tests-narrow-window-keeps-the-measure ()
   "A narrow viewport renders a wide table without overflowing the measure."
   (let ((session (etaf-org-preview-create

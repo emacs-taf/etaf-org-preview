@@ -869,9 +869,13 @@ The caller owns the spacing between blocks through its column gap."
                    ('progress 'info)
                    ('hold 'neutral)
                    (_ 'warning))))
-    (etaf-node 'etaf-tag
-               (list :text todo :variant variant)
-               nil)))
+    ;; The tag computes its own width, but it is a flex item here: a tight
+    ;; heading row would shrink it and clip the last glyph of the keyword.
+    (etaf-node 'box
+               (list :flex-shrink 0)
+               (list (etaf-node 'etaf-tag
+                                (list :text todo :variant variant)
+                                nil)))))
 
 (defun etaf-org-preview--planning-view (planning env)
   "Return the planning line View of PLANNING in ENV.
@@ -968,7 +972,8 @@ An expanded view (HIDDEN set) is a two-column grid; otherwise one chip."
 (defun etaf-org-preview--priority-box (priority env)
   "Return the priority chip of PRIORITY in ENV."
   (etaf-node 'box
-             (list :border (list '(px 1) 'solid
+             (list :flex-shrink 0
+                   :border (list '(px 1) 'solid
                                  (etaf-org-preview--color
                                   env (if (equal priority "A") :danger :border)))
                    :color (etaf-org-preview--color
@@ -1010,7 +1015,7 @@ The row is the fold affordance: pressing it cycles the section."
                                                     nil)))))
          (title-box (etaf-node 'box
                                (list :width 'stretch
-                                     :min-width '(ch 0)
+                                     :min-width '(ch 10)
                                      :wrap-mode 'word)
                                (etaf-org-preview--inline-nodes
                                 (etaf-org-preview-section-title-inlines section)
@@ -1042,7 +1047,8 @@ The row is the fold affordance: pressing it cycles the section."
                          (list :width 'stretch
                                :justify-content 'space-between
                                :align-items 'center
-                               :gap '((lh 0) (ch 1)))
+                               :flex-wrap 'wrap
+                               :gap '((lh 0.2) (ch 1)))
                          (list (etaf-node 'flex
                                           (list :flex-grow 1 :flex-shrink 1
                                                 :min-width '(ch 0)
@@ -1051,6 +1057,7 @@ The row is the fold affordance: pressing it cycles the section."
                                           left)
                                (etaf-node 'flex
                                           (list :flex-shrink 0
+                                                :justify-content 'end
                                                 :max-width '(ch 32))
                                           right)))))
     (etaf-node 'column
