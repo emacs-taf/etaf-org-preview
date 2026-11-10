@@ -199,6 +199,26 @@
       "name": "etaf-org-preview-tests-heading-navigation-round-trips",
       "file": "tests/etaf-org-preview-tests.el",
       "purpose": "Next and previous heading move between headlines and return to the same row, so outline navigation never gets stuck on one heading."
+    },
+    {
+      "name": "etaf-org-preview-tests-unknown-drawer-content-is-reachable",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "An unknown drawer keeps a named chip and show-hidden reveals its text, so no drawer content disappears silently."
+    },
+    {
+      "name": "etaf-org-preview-tests-targets-render-as-anchors-and-links",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A radio target renders as a quiet anchor and its reference as link text instead of leaking << markers."
+    },
+    {
+      "name": "etaf-org-preview-tests-export-snippets-show-only-their-payload",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "An inline export snippet shows its payload in source style without the @@backend: markers, and is never interpreted."
+    },
+    {
+      "name": "etaf-org-preview-tests-src-line-numbers-follow-the-n-switch",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A source block with the -n switch numbers its lines from the requested start in a gutter."
     }
   ]
 }

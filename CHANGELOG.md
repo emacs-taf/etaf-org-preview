@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.1
+
+### Fixed
+
+- An unknown drawer is no longer dropped: it keeps a named chip, and `C-c v`
+  reveals its text. `C-c v` also reveals the recorded `LOGBOOK` lines and now
+  reaches comment blocks and metadata in section bodies, which previously
+  ignored the toggle.
+- Radio targets (`<<<name>>>`) and target references (`<<name>>`) render as an
+  anchor and a link that jumps to the defining section, instead of leaking the
+  raw markers. `#+NAME:` targets join the same table.
+- Inline export snippets show their payload in source style without the
+  `@@backend:` markers, and a payload is never interpreted.
+
+### Added
+
+- `#+ATTR_*:` `:width` and `:height` cap an image in pixels or as a percentage
+  of the reading measure while keeping its aspect ratio; `:alt` becomes the
+  image's help text.
+- A source block with the `-n` or `-n 20` switch renders an aligned line-number
+  gutter whose width follows the last number.
+
 ## 0.1.0
 
 First release.

@@ -274,13 +274,32 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
           ('export-snippet
            (push (list :text (or (plist-get node :text) "")
                        :props (append
-                               (list :color (etaf-org-preview--color env :muted)
+                               (list :background-color
+                                     (etaf-org-preview--color env :accent-soft)
                                      :font-family (etaf-org-preview--mono))
                                inherited))
                  result))
           ('break
            (push (list :text "\n" :props inherited) result))
-          ('target nil)
+          ('target
+           (let ((name (or (plist-get node :name) "")))
+             (if (plist-get node :radio)
+                 (push (list :text (concat "◆ " name)
+                             :props (append
+                                     (list :color (etaf-org-preview--color env :faint)
+                                           :font-family (etaf-org-preview--mono)
+                                           :font-size (etaf-org-preview--scaled env 0.8))
+                                     inherited))
+                       result)
+               (push (list :text name
+                           :press (lambda ()
+                                    (etaf-org-preview--act env :target name))
+                           :help (format "跳到目标：%s" name)
+                           :props (append
+                                   (list :color (etaf-org-preview--color env :accent)
+                                         :text-decoration-line '(underline))
+                                   inherited))
+                     result))))
           (_
            (when-let* ((text (plist-get node :text)))
              (push (list :text text :props inherited) result))))))
@@ -313,7 +332,8 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
                   (append (plist-get entry :props)
                           (when (plist-get entry :press)
                             (list :on-press (plist-get entry :press)
-                                  :role 'button :tab-index 0)))
+                                  :role 'button :tab-index 0 :pointer 'hand
+                                  :help-echo (plist-get entry :help))))
                   (list (plist-get entry :text)))))
    entries))
 
@@ -333,6 +353,47 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
 ;;; ---------------------------------------------------------------------------
 ;;; Images
 ;;; ---------------------------------------------------------------------------
+
+(defun etaf-org-preview--attr-columns (value env)
+  "Return VALUE as a column count in ENV, or nil.
+VALUE is an Org attribute width: an integer pixel count or a percentage of the
+reading measure."
+  (when-let* ((text (cond ((numberp value) (number-to-string value))
+                          ((stringp value) value)))
+              ((string-match-p "\\`[0-9]+\\(?:\\.[0-9]+\\)?%?\\'" text)))
+    (let ((number (string-to-number text))
+          (percent (string-suffix-p "%" text)))
+      (max 4 (round (if percent
+                        (* (or (plist-get env :width) 92) (/ number 100.0))
+                      (/ number (max 1 (frame-char-width)))))))))
+
+(defun etaf-org-preview--attr-rows (value)
+  "Return VALUE as a row count, or nil."
+  (when-let* ((text (cond ((numberp value) (number-to-string value))
+                          ((stringp value) value)))
+              ((string-match-p "\\`[0-9]+\\(?:\\.[0-9]+\\)?\\'" text)))
+    (max 1 (round (/ (string-to-number text) (max 1 (frame-char-height)))))))
+
+(defun etaf-org-preview--media-grid (media env)
+  "Return the (COLUMNS . ROWS) of MEDIA in ENV.
+The image keeps its aspect ratio; ATTR width and height cap the natural size."
+  (let* ((pixels (and (plist-get media :width)
+                      (cons (plist-get media :width) (plist-get media :height))))
+         (grid (etaf-org-preview--grid-for-pixels env pixels))
+         (attrs (plist-get media :attrs))
+         (column-cap (etaf-org-preview--attr-columns (plist-get attrs :width) env))
+         (row-cap (etaf-org-preview--attr-rows (plist-get attrs :height)))
+         (scale (min 1.0
+                     (if (and column-cap (< column-cap (car grid)))
+                         (/ (float column-cap) (car grid))
+                       1.0)
+                     (if (and row-cap (< row-cap (cdr grid)))
+                         (/ (float row-cap) (cdr grid))
+                       1.0))))
+    (if (< scale 1.0)
+        (cons (max 4 (round (* (car grid) scale)))
+              (max 1 (round (* (cdr grid) scale))))
+      grid)))
 
 (defun etaf-org-preview--grid-for-pixels (env pixels)
   "Return (COLUMNS . ROWS) for PIXELS in ENV's reading measure.
@@ -356,10 +417,9 @@ dimensions fit, first the reading measure and then the row budget."
 (defun etaf-org-preview--image-card (media env)
   "Return the image card for MEDIA in ENV, or a placeholder card."
   (let* ((path (plist-get media :path))
-         (pixels (and (plist-get media :width)
-                      (cons (plist-get media :width) (plist-get media :height))))
-         (grid (etaf-org-preview--grid-for-pixels env pixels))
-         (caption (plist-get media :caption)))
+         (grid (etaf-org-preview--media-grid media env))
+         (caption (plist-get media :caption))
+         (alt (plist-get media :alt)))
     (etaf-node 'column
                (list :width 'stretch :cross-align 'center :item-gap '(lh 0.5))
                (append
@@ -373,7 +433,8 @@ dimensions fit, first the reading measure and then the row budget."
                                                   (etaf-org-preview--act
                                                    env :open-file path))
                                       :help-echo (format "%s（RET 打开）"
-                                                         (file-name-nondirectory path)))
+                                                         (or alt
+                                                             (file-name-nondirectory path))))
                                 nil)
                    (etaf-node 'box
                               (list :border (list '(px 1) 'solid
@@ -622,6 +683,48 @@ A nested list gets two extra cells, so each level reads as one step in."
                (list :width 'stretch :item-gap '(lh 0.25))
                (nreverse items))))
 
+(defun etaf-org-preview--code-first-line (switches)
+  "Return the first line number SWITCHES asks for, or nil.
+`-n' numbers from one, `-n 20' numbers from 20; any other switch keeps the
+block unnumbered."
+  (let ((tokens (and switches (split-string switches "[ \t]+" t))))
+    (when (member "-n" tokens)
+      (let ((rest (cdr (member "-n" tokens))))
+        (if (and rest (string-match-p "\\`[0-9]+\\'" (car rest)))
+            (string-to-number (car rest))
+          1)))))
+
+(defun etaf-org-preview--numbered-code-lines (text first env)
+  "Return TEXT as numbered rows starting at FIRST in ENV.
+The gutter keeps its width for the whole block and the code column wraps under
+itself, so a long line stays aligned with the rest of the block."
+  (let* ((lines (split-string text "\n"))
+         (width (length (number-to-string (+ first (1- (length lines))))))
+         (rows nil))
+    (dolist (line lines)
+      (push (etaf-node 'flex
+                       (list :width 'stretch :align-items 'start)
+                       (list
+                        (etaf-node 'box
+                                   (list :width (list 'ch (1+ width))
+                                         :flex-shrink 0
+                                         :text-align 'right
+                                         :color (etaf-org-preview--color env :faint)
+                                         :font-size (etaf-org-preview--scaled env 0.82)
+                                         :font-family (etaf-org-preview--mono))
+                                   (list (etaf-node 'text nil
+                                                    (list (number-to-string first)))))
+                        (etaf-node 'box
+                                   (list :flex-basis '(ch 0) :flex-grow 1
+                                         :padding-left '(ch 1)
+                                         :wrap-mode 'char)
+                                   (list (etaf-node 'text nil
+                                                    (list (if (string-empty-p line)
+                                                              " " line)))))))
+            rows)
+      (cl-incf first))
+    (nreverse rows)))
+
 (defun etaf-org-preview--code-block-view (block env &optional label)
   "Return the code card for BLOCK in ENV, labeled LABEL when given.
 A block longer than the fold threshold shows its first lines and a chip to
@@ -629,6 +732,8 @@ reveal the rest."
   (let* ((text (or (plist-get block :text) ""))
          (language (or label (plist-get block :lang)))
          (body text)
+         (first-line (etaf-org-preview--code-first-line
+                      (plist-get block :switches)))
          (header (when (and language (not (string-empty-p language)))
                    (etaf-node 'box
                               (list :width 'stretch
@@ -655,7 +760,59 @@ reveal the rest."
                                   :padding (if header '((lh 0.5) (ch 2))
                                              '((lh 1) (ch 2)))
                                   :color (etaf-org-preview--color env :ink))
-                            (list (etaf-node 'text nil (list body)))))))))
+                            (list
+                             (if first-line
+                                 (etaf-node 'column
+                                            (list :width 'stretch
+                                                  :item-gap '(lh 0))
+                                            (etaf-org-preview--numbered-code-lines
+                                             body first-line env))
+                               (etaf-node 'text nil (list body))))))))))
+
+(defun etaf-org-preview--reveal-chip (env label help)
+  "Return a chip reading LABEL in ENV that reveals hidden content on press.
+HELP explains what pressing it shows."
+  (etaf-node 'box
+             (list :on-press (lambda ()
+                               (etaf-org-preview--act env :hidden))
+                   :role 'button :tab-index 0 :pointer 'hand
+                   :help-echo help)
+             (list (etaf-org-preview--chip env label :muted :panel))))
+
+(defun etaf-org-preview--drawer-view (drawer env hidden)
+  "Return the View of an unknown DRAWER in ENV.
+A folded drawer keeps a chip with its name; HIDDEN reveals the content, so no
+drawer text is ever silently dropped."
+  (let ((name (or (plist-get drawer :name) "DRAWER"))
+        (text (or (plist-get drawer :text) "")))
+    (if hidden
+        (etaf-node 'box
+                   (list :width 'stretch
+                         :border-left (list '(px 2) 'solid
+                                            (etaf-org-preview--color env :border))
+                         :padding '((lh 0.25) (ch 2)))
+                   (append
+                    (list (etaf-node 'text
+                                     (list :color (etaf-org-preview--color env :muted)
+                                           :font-family (etaf-org-preview--mono)
+                                           :font-size (etaf-org-preview--scaled env 0.8))
+                                     (list (format "抽屉 %s" name))))
+                    (unless (string-empty-p text)
+                      (list (etaf-node 'box
+                                       (list :width 'stretch :wrap-mode 'word
+                                             :padding-top '(lh 0.25))
+                                       (list (etaf-node 'text
+                                                        (list :color
+                                                              (etaf-org-preview--color
+                                                               env :ink)
+                                                              :font-size
+                                                              (etaf-org-preview--scaled
+                                                               env 0.85))
+                                                        (list text))))))))
+      (etaf-node 'box
+                 (list :padding-left '(ch 2) :padding-top '(lh 0.25))
+                 (list (etaf-org-preview--reveal-chip
+                        env (format "抽屉 %s" name) "显示抽屉内容"))))))
 
 (defun etaf-org-preview--callout-view (block env)
   "Return the callout View of special BLOCK in ENV."
@@ -834,6 +991,7 @@ reveal the rest."
       ('include-card
        (etaf-org-preview--file-card
         (list :path (plist-get block :target)) env))
+      ('drawer (etaf-org-preview--drawer-view block env hidden))
       ('footnote-def nil)
       (_ nil))))
 
@@ -945,8 +1103,9 @@ An expanded view (HIDDEN set) is a two-column grid; otherwise one chip."
                           env (format "属性 %d" (length properties))
                           :muted :panel)))))))
 
-(defun etaf-org-preview--logbook-chip (section env)
-  "Return the LOGBOOK summary of SECTION in ENV, or nil."
+(defun etaf-org-preview--logbook-chip (section env hidden)
+  "Return the LOGBOOK summary of SECTION in ENV, or nil.
+HIDDEN also shows the recorded lines under the summary."
   (when-let* ((entries (etaf-org-preview-section-logbook section)))
     (let* ((minutes (cl-loop for entry in entries
                              sum (or (plist-get entry :minutes) 0)))
@@ -954,9 +1113,24 @@ An expanded view (HIDDEN set) is a two-column grid; otherwise one chip."
                       (format "记录 %d · %d:%02d" (length entries)
                               (/ minutes 60) (% minutes 60))
                     (format "记录 %d" (length entries)))))
-      (etaf-node 'box
-                 (list :padding-left '(ch 2) :padding-top '(lh 0.25))
-                 (list (etaf-org-preview--chip env label :muted :panel))))))
+      (if hidden
+          (etaf-node 'column
+                     (list :width 'stretch :padding-left '(ch 2)
+                           :padding-top '(lh 0.25) :item-gap '(lh 0.25))
+                     (list (etaf-org-preview--chip env label :muted :panel)
+                           (when-let* ((text (etaf-org-preview-section-logbook-text
+                                              section))
+                                       ((not (string-empty-p text))))
+                             (etaf-node 'box
+                                        (list :width 'stretch :wrap-mode 'char
+                                              :color (etaf-org-preview--color env :muted)
+                                              :font-family (etaf-org-preview--mono)
+                                              :font-size (etaf-org-preview--scaled env 0.8))
+                                        (list (etaf-node 'text nil (list text)))))))
+        (etaf-node 'box
+                   (list :padding-left '(ch 2) :padding-top '(lh 0.25))
+                   (list (etaf-org-preview--reveal-chip
+                          env label "显示记录内容")))))))
 
 (defun etaf-org-preview--tags-view (tags env)
   "Return TAGS as right-aligned chips in ENV."
@@ -1090,9 +1264,11 @@ them in one batch, so their bodies stay hidden until a reader opens one."
   :render
   (let* ((state (etaf-value fold))
          (open (eq state 'open))
+         (hidden-value (etaf-value hidden))
          (children (and (not (eq state 'folded))
                         (etaf-org-preview-section-children section)))
-         (env (etaf-current-prop :env))
+         (env (plist-put (copy-sequence (etaf-current-prop :env))
+                         :hidden hidden-value))
          (views nil))
     (setq views (list (etaf-org-preview--heading-view section state env)))
     (when-let* ((planning (etaf-org-preview-section-planning section)))
@@ -1100,9 +1276,10 @@ them in one batch, so their bodies stay hidden until a reader opens one."
         (push (etaf-org-preview--planning-view planning env) views)))
     (when (not (eq state 'folded))
       (when-let* ((chip (etaf-org-preview--properties-chip
-                         section env (etaf-value hidden))))
+                         section env hidden-value)))
         (push chip views))
-      (when-let* ((chip (etaf-org-preview--logbook-chip section env)))
+      (when-let* ((chip (etaf-org-preview--logbook-chip
+                         section env hidden-value)))
         (push chip views)))
     (when open
       (when-let* ((body (etaf-org-preview--section-body-views section env)))
@@ -1320,6 +1497,8 @@ The column is centered and capped by ENV's `:width'; a narrow window fills down
 to the gutter on both sides.  Sections are Components, so a fold only repaints
 the section it changes."
   (let* ((width (max 24 (or (plist-get env :width) 92)))
+         (hidden (etaf-value (plist-get env :hidden-ref)))
+         (env (plist-put (copy-sequence env) :hidden hidden))
          (gutter etaf-org-preview--measure-gutter)
          (background (plist-get env :background))
          (sections (plist-get document :sections))

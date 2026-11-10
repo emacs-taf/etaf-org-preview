@@ -78,6 +78,7 @@ item and a definition in another section still count in one sequence."
   (planning nil)
   (properties nil)
   (logbook nil)
+  (logbook-text nil)
   (archived nil)
   (commented nil)
   (children nil)
@@ -299,7 +300,7 @@ Unknown keys are ignored; the returned plist always carries the defaults."
 
 (defconst etaf-org-preview--inline-candidate
   (concat "\\[\\[\\|\\[fn:\\|\\[cite\\|\\[@\\|<[0-9]\\|\\[[0-9]"
-          "\\|<<<\\?\\|{{{\\|@@"
+          "\\|<\\{2,3\\}\\|{{{\\|@@"
           "\\|\\(?:src\\|call\\)_[A-Za-z0-9_+-]+"
           "\\|\\(?:https?\\|mailto\\):[^ \t\n]+"
           "\\|\\\\"
@@ -684,13 +685,17 @@ Return (NODE . NEXT) or nil."
 
 (defun etaf-org-preview--inline-at-snippet (_ctx string start)
   "Parse an export snippet of STRING at START.
-Return (NODE . NEXT) or nil."
+The snippet keeps its BACKEND and its payload TEXT separately: a preview shows
+the payload and never interprets it."
   (when (string-prefix-p "@@" (substring string start (min (length string)
                                                            (+ start 2))))
     (when (string-match "@@" string (+ start 2))
-      (let ((close (match-beginning 0)))
+      (let* ((close (match-beginning 0))
+             (body (substring string (+ start 2) close))
+             (colon (string-match ":" body)))
         (cons (list :type 'export-snippet
-                    :text (substring string start (+ close 2)))
+                    :backend (and colon (substring body 0 colon))
+                    :text (if colon (substring body (1+ colon)) body))
               (+ close 2))))))
 
 (defun etaf-org-preview--inline-at-url (_ctx string start)
@@ -1658,6 +1663,8 @@ The preview keeps rendering deterministic: the file wins, then the user's
                                (equal (plist-get (car body) :name) "LOGBOOK"))
                       (setf (etaf-org-preview-section-logbook section)
                             (plist-get (car body) :clock))
+                      (setf (etaf-org-preview-section-logbook-text section)
+                            (plist-get (car body) :text))
                       (setf (etaf-org-preview-section-body section) (cdr body)))))
                 (when (or (member "ARCHIVE" (etaf-org-preview-section-tags section))
                           (equal (cdr (assoc "ARCHIVE" (etaf-org-preview-section-properties
@@ -1757,6 +1764,7 @@ fold state used when the document names none."
             :sections sections
             :preamble (nreverse preamble)
             :outline outline
+            :targets (etaf-org-preview-ctx-targets ctx)
             :footnotes footnotes
             :degraded degraded
             :degraded-types (etaf-org-preview--degraded-types ctx)

@@ -23,7 +23,9 @@ reload, a width change or a theme change repaints only what it touches.
   checkboxes, tables with alignment and width cookies, source, example,
   fixed-width, quote, verse, center, comment and export blocks, callouts
   (`NOTE`, `TIP`, `WARNING`, …), entities, subscripts, timestamps, footnotes,
-  citations, macros, targets, links and layout directives.
+  citations, macros, targets, links and layout directives. Images honor
+  attribute widths, source blocks honor `-n`, and a drawer or logbook keeps its
+  text one key away.
 - **Structural folding.** Each headline owns a fold cell: `C-c TAB` cycles
   folded, children and open; `C-c f` switches between the outline and the full
   document. A folded subtree is never measured, prepared or mounted.

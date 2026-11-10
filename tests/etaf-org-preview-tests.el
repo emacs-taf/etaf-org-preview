@@ -559,5 +559,50 @@
           (etaf-unmount)))
       (kill-buffer buffer))))
 
+(ert-deftest etaf-org-preview-tests-unknown-drawer-content-is-reachable ()
+  "An unknown drawer keeps its chip and reveals its text with show-hidden."
+  (let ((session (etaf-org-preview-create
+                  :text "* 标题\n:NOTE:\n抽屉里的说明\n:END:\n正文\n")))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "抽屉 NOTE" text))
+        (should-not (string-match-p "抽屉里的说明" text)))
+      (etaf-org-preview-show-hidden session t)
+      (etaf-runtime-flush (etaf-runtime-for-buffer (current-buffer)))
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "抽屉里的说明" text))
+        (should (string-match-p "NOTE" text))))))
+
+(ert-deftest etaf-org-preview-tests-targets-render-as-anchors-and-links ()
+  "A radio target becomes a quiet anchor and a reference becomes link text."
+  (let ((session (etaf-org-preview-create
+                  :text "* 目标\n见 <<<radio>>>，另见 <<radio>>。\n")))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "◆ radio" text))
+        (should (string-match-p "另见 radio" text))
+        (should-not (string-match-p "<<" text))))))
+
+(ert-deftest etaf-org-preview-tests-export-snippets-show-only-their-payload ()
+  "An export snippet renders its payload without the @@backend: markers."
+  (let ((session (etaf-org-preview-create
+                  :text "* 标记\n前缀 @@html:<b>x</b>@@ 后缀\n")))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "<b>x</b>" text))
+        (should-not (string-match-p "@@html:" text))))))
+
+(ert-deftest etaf-org-preview-tests-src-line-numbers-follow-the-n-switch ()
+  "A source block with -n 20 numbers its lines from 20 in a gutter."
+  (let ((session (etaf-org-preview-create
+                  :text (concat "* 代码\n#+BEGIN_SRC elisp -n 20\n"
+                                "(+ 1 2)\n(+ 3 4)\n#+END_SRC\n"))))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "20[ \t]+" text))
+        (should (string-match-p (regexp-quote "(+ 1 2)") text))
+        (should (string-match-p (regexp-quote "21 (+ 3 4)") text))
+        (should-not (string-match-p (regexp-quote "1 (+ 1 2)") text))))))
+
 (provide 'etaf-org-preview-tests)
 ;;; etaf-org-preview-tests.el ends here

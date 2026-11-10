@@ -177,7 +177,9 @@ resolved here."
                                :kind (if image 'image 'video)
                                :exists (and path (file-exists-p path))
                                :width (car size)
-                               :height (cdr size)))
+                               :height (cdr size)
+                               :attrs (plist-get block :attrs)
+                               :alt (plist-get (plist-get block :attrs) :alt)))
             block))
       block)))
 
@@ -801,7 +803,25 @@ search suffix opens the target and reveals the heading it names."
                          :open-file (lambda (path)
                                       (etaf-org-preview--open-file path))
                          :footnote (lambda (label)
-                                     (etaf-org-preview--jump-footnote session label))))))
+                                     (etaf-org-preview--jump-footnote session label))
+                         :target (lambda (name)
+                                   (etaf-org-preview--jump-target session name))
+                         :hidden (lambda ()
+                                   (etaf-org-preview-show-hidden
+                                    session
+                                    (not (etaf-org-preview--read session :hidden))))))))
+
+(defun etaf-org-preview--jump-target (session name)
+  "Move point to SESSION's target NAME and recenter.
+A target lives in the section that defines it, so a reference reaches the same
+place whether the name was written as a radio target or as a plain target."
+  (let* ((document (etaf-org-preview--read session :document))
+         (section (gethash name (plist-get document :targets)))
+         (id (and section (etaf-org-preview-section-id section))))
+    (when id
+      (etaf-org-preview--reveal id session)
+      (etaf-org-preview--flush session)
+      (etaf-org-preview--locate-id session id))))
 
 (defun etaf-org-preview--toggle-fold (session id)
   "Advance the fold state of SESSION's section ID.

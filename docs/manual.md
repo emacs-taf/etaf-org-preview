@@ -32,7 +32,7 @@ buffer.
 | `RET` or click | Activate a link, a footnote, an image; fold a headline |
 | `C-c C-o` | Activate the control at point |
 | `C-c t` | Show or hide the table of contents |
-| `C-c v` | Show or hide comments, properties and metadata lines |
+| `C-c v` | Show or hide comments, properties, drawers and metadata lines |
 | `t` | Switch to the next fixed palette |
 | `[` / `]` | Narrow / widen the reading measure by four cells |
 | `r` | Re-read and repaint the document |
@@ -84,7 +84,7 @@ reader in the section it was reading. `r` reloads on demand.
 | `#+STARTUP: overview\|content\|folded` | Initial fold state |
 | `#+MACRO:` | Inline macro expansion, including `title`, `author`, `date`, `email` and `input-file` |
 | `#+LINK:` | Link abbreviations |
-| `#+CAPTION:`, `#+NAME:`, `#+ATTR_*:` | Attached to the next block; the caption renders under it |
+| `#+CAPTION:`, `#+NAME:`, `#+ATTR_*:` | Attached to the next block; the caption renders under it. `:width` and `:height` (pixels or a percentage) cap an image, `:alt` becomes its help text |
 | `#+RESULTS:` | A result card |
 | `#+INCLUDE:`, `#+CALL:`, dynamic blocks | Cards that name what was not executed |
 | `#+TBLFM:` | A grey footnote under its table |
@@ -104,9 +104,9 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `COMMENT` | A “注释” chip and a folded start |
 | `:ARCHIVE:` tag or property | An “归档” chip and a folded start |
 | `SCHEDULED:`, `DEADLINE:`, `CLOSED:` | A planning line with written labels and dates |
-| `:PROPERTIES:` | A chip with the entry count; expand it with the properties grid |
-| `LOGBOOK` clock entries | A chip with the entry count and total time |
-| Other drawers | A named chip |
+| `:PROPERTIES:` | A chip with the entry count; `C-c v` shows the properties grid |
+| `LOGBOOK` clock entries | A chip with the entry count and total time; `C-c v` also shows the recorded lines |
+| Other drawers | A named chip; `C-c v` shows the drawer text, so no content disappears |
 
 ### Body
 
@@ -120,7 +120,7 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `- term :: description` | Term, a faint `::`, then the description |
 | Tables | Full grid, so rows and columns both carry rules; header rule, alignment and width cookies, `<n>` minimum widths; a wide cell wraps inside its column instead of overflowing |
 | Multi-rule tables `|---` | One separator per rule row |
-| `#+BEGIN_SRC` | A code card with its language |
+| `#+BEGIN_SRC` | A code card with its language; the `-n` and `-n 20` switches add a line-number gutter |
 | `#+BEGIN_EXAMPLE` | A code card without a language |
 | `#+BEGIN_QUOTE` | An indented quote with a trailing `-- author` line |
 | `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION` | A callout with a written label and its semantic color |
@@ -149,8 +149,8 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `[cite:@key]`, `[@key]` | Monospace citation text |
 | `{{{macro}}}`, `{{{title}}}` | Expanded |
 | `src_py{…}` | Monospace with a soft background |
-| `@@html:…@@` | Dimmed source text |
-| `<<target>>`, `<<<radio>>>` | Not drawn; links resolve to them |
+| `@@html:…@@` | Its payload in source style; the backend marker is removed and the payload is never interpreted |
+| `<<target>>`, `<<<radio>>>` | The definition is a quiet anchor; a reference is link text that jumps to it |
 | `\\` | A line break |
 
 ## Links
@@ -186,7 +186,7 @@ shows the path or URL instead of failing.
 | Palette | `t` cycles `light`, `sepia`, `dark`; `etaf-org-preview-set-theme` accepts `auto` to follow the frame's faces again |
 | Reading measure | `[` and `]` change the maximum; a resize refits the measure, a narrower window fills the available columns, and below the preferred minimum the page keeps reflowing instead of scrolling sideways |
 | Table of contents | `C-c t`; depth comes from `#+OPTIONS: toc` (default 2) |
-| Hidden content | `C-c v` reveals comment lines, comment blocks, property drawers and metadata keywords |
+| Hidden content | `C-c v` reveals comment lines, comment blocks, property drawers, other drawers, logbook lines and metadata keywords |
 
 `auto` paints no page background, so the preview uses the Emacs theme's own
 background. A fixed palette paints its own page, and every surface — chips,

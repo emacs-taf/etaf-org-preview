@@ -62,7 +62,8 @@ and never re-splits the text.
 3. **Headline pass.** Headlines build a section tree with a stack: a new
    headline pops every section at the same or deeper level. A planning line
    directly below a headline belongs to it; a property drawer or `LOGBOOK` at
-   the top of the body is lifted into the section.
+   the top of the body is lifted into the section, keeping both its parsed clock
+   entries and its recorded lines.
 4. **Attachments.** `#+CAPTION:`, `#+NAME:` and `#+ATTR_*:` lines attach to the
    next block in the same container. The keyword node stays in the list with
    `:attached`, so `C-c v` can still reveal it.
@@ -71,7 +72,10 @@ and never re-splits the text.
    URLs, `\\`, and the emphasis characters). A candidate is matched with an
    anchor regexp; a failed match emits one character and advances, so the scan
    is linear. Emphasis checks the documented Org boundaries: the character
-   before and after may not be alphanumeric.
+   before and after may not be alphanumeric. Targets and `#+NAME:` entries share
+   one table on the document, so a reference jumps to the section that defines
+   it; an export snippet keeps its backend apart from its payload, and only the
+   payload is drawn.
 6. **Ids.** A section id is its `CUSTOM_ID`, else its `ID`, else a positional
    path (`s1.1`). Fold state, anchors and outline rows all key off that id, so
    a reload that moves a section keeps its fold state only when the id is
