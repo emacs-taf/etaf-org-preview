@@ -203,8 +203,14 @@ resize instead of keeping the width the document was opened at."
                  ((>= body etaf-org-preview-width-min)
                   etaf-org-preview-width-min)
                  (t (max 12 body)))))
-          (etaf-org-preview--write session :width width)
-          width)
+          ;; A display change that leaves the window the same size must not
+          ;; undo a measure the reader picked with `[' or `]'; only a real
+          ;; resize refits.
+          (if (equal (plist-get session :fit-body) body)
+              (etaf-org-preview--read session :width)
+            (plist-put session :fit-body body)
+            (etaf-org-preview--write session :width width)
+            width))
       (etaf-org-preview--read session :width))))
 
 ;;; ---------------------------------------------------------------------------
