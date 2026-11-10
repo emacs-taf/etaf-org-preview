@@ -62,7 +62,7 @@ outline and the full view.
 Folding is structural. A closed section is not rendered, so its images are
 not prepared, its tables are not measured and its blocks are not mounted.
 That is what keeps a large file fast: a 120-section document mounts in about
-90 ms as an outline and about 290 ms fully expanded.
+120 ms as an outline and about 350 ms fully expanded.
 
 A document opened from a file follows that file. Saving the source, or
 changing it on disk, repaints after the write settles (250 ms) and keeps the

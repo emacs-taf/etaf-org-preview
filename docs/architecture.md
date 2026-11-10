@@ -179,10 +179,10 @@ rendered lines, 900×50 viewport), Emacs 31, Apple silicon:
 | Path | Time |
 | --- | --- |
 | Parse | 27 ms |
-| Mount, every section open | 292 ms |
-| Mount, `overview` (headlines only) | 90 ms |
-| Fold one section and flush | 0.6 ms |
-| Refresh and reparse | 110 ms |
+| Mount, every section open | 354 ms |
+| Mount, `overview` (headlines only) | 120 ms |
+| Fold one section and flush | 0.7 ms |
+| Refresh and reparse | 87 ms |
 
 The outline mount is the number that matters for large files: mounting only
 headlines costs about a third of the fully expanded tree, and each expanded
