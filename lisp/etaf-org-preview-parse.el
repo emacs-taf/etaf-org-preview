@@ -671,12 +671,16 @@ Return (NODE . NEXT) or nil."
 Return (NODE . NEXT) or nil."
   (let ((rest (substring string start)))
     (when (string-match "\\`\\(src\\|call\\)_\\([A-Za-z0-9_+-]+\\)\\(?:\\[[^]]*\\]\\)?{" rest)
-      (let* ((name-end (+ start (match-end 0)))
+      (let* ((source-p (equal (match-string 1 rest) "src"))
+             (language (downcase (match-string 2 rest)))
+             (name-end (+ start (match-end 0)))
+             ;; Reading the close brace overwrites the match data, so the
+             ;; prefix and language are captured before this search.
              (close (string-match "}" string name-end)))
         (when close
-          (cons (if (equal (match-string 1 rest) "src")
+          (cons (if source-p
                     (list :type 'inline-src
-                          :lang (downcase (match-string 2 rest))
+                          :lang language
                           :text (substring string name-end close))
                   (list :type 'inline-src
                         :lang nil
@@ -1127,11 +1131,10 @@ A `*' at column zero is a headline, not a bullet."
          (first (etaf-org-preview--item-match (aref lines index)))
          (base (nth 0 first))
          (ordered (string-match-p "[0-9A-Za-z][.)]\\'" (nth 1 first)))
+         (style (and ordered
+                     (aref (nth 1 first) (1- (length (nth 1 first))))))
          (items nil)
-         (cursor index)
-         (start-number (and ordered
-                            (string-match "[0-9]+" (nth 1 first))
-                            (string-to-number (match-string 0 (nth 1 first))))))
+         (cursor index))
     (while (and (< cursor end)
                 (let* ((line (aref lines cursor))
                        (match (etaf-org-preview--item-match line)))
@@ -1140,10 +1143,14 @@ A `*' at column zero is a headline, not a bullet."
                    ;; part of the current item and is consumed by the item's
                    ;; own continuation lines.
                    ((and match (= (nth 0 match) base))
-                    (equal (and (string-match-p "[0-9A-Za-z][.)]\\'"
-                                                (nth 1 match))
-                                t)
-                           (and ordered t)))
+                    (and (equal (and (string-match-p "[0-9A-Za-z][.)]\\'"
+                                                     (nth 1 match))
+                                     t)
+                                (and ordered t))
+                         (or (not ordered)
+                             (eq (aref (nth 1 match)
+                                       (1- (length (nth 1 match))))
+                                 style))))
                    (match t)
                    ((etaf-org-preview--blank-line-p line)
                     (let ((next cursor))
@@ -1176,9 +1183,11 @@ A `*' at column zero is a headline, not a bullet."
                   item-lines))
           (cl-incf cursor))
         (setq item-lines (nreverse item-lines))
-        (push (etaf-org-preview--list-item ctx marker item-lines ordered
-                                           (and start-number
-                                                (+ start-number (length items))))
+        (push (etaf-org-preview--list-item
+               ctx marker item-lines ordered
+               (and ordered
+                    (string-match "[0-9]+" marker)
+                    (string-to-number (match-string 0 marker))))
               items)))
     (cons (list :type 'list
                 :ordered ordered

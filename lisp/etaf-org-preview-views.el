@@ -506,7 +506,7 @@ cells left by rounding back to columns that are still below their floor."
                  and do (cl-decf leftover))
         result))))
 
-(cl-defun etaf-org-preview--table-row (row env widths &key header last)
+(cl-defun etaf-org-preview--table-row (row env widths &key header rule)
   "Return one table row View of ROW in ENV.
 WIDTHS holds the content width of each column.  HEADER fills the header
 surface and LAST drops the closing rule."
@@ -541,10 +541,12 @@ surface and LAST drops the closing rule."
                (list :width 'stretch :align-items 'start
                      :background-color (when header
                                          (etaf-org-preview--color env :table-header))
-                     :border-bottom (unless last
+                     ;; One rule under the header keeps it apart from the
+                     ;; body; body rows stay open so the table reads as
+                     ;; columns instead of as a spreadsheet.
+                     :border-bottom (when (or header rule)
                                       (list '(px 1) 'solid
-                                            (etaf-org-preview--color
-                                             env (if header :border :rule)))))
+                                            (etaf-org-preview--color env :border))))
                (nreverse cells))))
 
 (defun etaf-org-preview--table-view (block env)
@@ -556,6 +558,7 @@ column and the table never grows past the reading measure."
          (aligns (or (plist-get block :aligns) nil))
          (widths-cookie (or (plist-get block :widths) nil))
          (header-count (or (plist-get block :header-count) 0))
+         (rules (plist-get block :rules))
          (floors (cl-loop for column from 0 below columns
                           collect (or (nth column widths-cookie)
                                       (cl-loop for row in rows
@@ -579,10 +582,12 @@ column and the table never grows past the reading measure."
       (push (etaf-org-preview--table-row
              row env widths
              :header (< index header-count)
-             :last (= index (1- (length rows))))
+             ;; RULES holds the row count before each rule line, so the row
+             ;; that ends at that position is the one carrying the rule.
+             :rule (and (member (1+ index) rules) t))
             row-views)
       (cl-incf index))
-    (let* ((total (+ 2 (* 2 columns) (apply #'+ widths) separator-cells))
+    (let* ((total (+ (* 2 columns) (apply #'+ widths) separator-cells))
            (table (etaf-node 'column
                              (list :width 'stretch)
                              (nreverse row-views))))
@@ -591,9 +596,6 @@ column and the table never grows past the reading measure."
                  (append
                   (list (etaf-node 'box
                                    (list :width (list 'ch total)
-                                         :border (list '(px 1) 'solid
-                                                       (etaf-org-preview--color env :border))
-                                         :border-radius '(px 4)
                                          :overflow 'hidden)
                                    (list table)))
                   (when-let* ((tblfm (plist-get block :tblfm)))
@@ -607,8 +609,36 @@ column and the table never grows past the reading measure."
                                            :font-size (etaf-org-preview--scaled env 0.85))
                                      (list caption)))))))))
 
-(defun etaf-org-preview--list-marker (item env)
-  "Return the marker View of list ITEM in ENV."
+(defun etaf-org-preview--list-marker-text (item)
+  "Return the text that marks ITEM in an ordered list, or nil."
+  (when (plist-get item :ordered)
+    (let* ((marker (plist-get item :marker))
+           (suffix (if (and marker
+                            (eq (aref marker (1- (length marker))) ?\)))
+                       ")" "."))
+           (counter (plist-get item :counter)))
+      (cond
+       (counter (concat counter suffix))
+       (marker marker)
+       (t (format "%d." (or (plist-get item :number) 1)))))))
+
+(defun etaf-org-preview--list-marks (items)
+  "Return the marker column width shared by ITEMS.
+The column fits the widest number in the list, so a two-digit item still
+lines up with a one-digit one.  A bullet or a checkbox needs one cell."
+  (let ((width 1))
+    (dolist (item items)
+      (cond
+       ;; The drawn check mark fills two cells in the default font, so its
+       ;; column keeps one more cell of air before the text starts.
+       ((plist-get item :checkbox) (setq width (max width 2)))
+       ((plist-get item :term) nil)
+       (t (when-let* ((text (etaf-org-preview--list-marker-text item)))
+            (setq width (max width (string-width text)))))))
+    width))
+
+(defun etaf-org-preview--list-marker (item env marks)
+  "Return the marker View of list ITEM in ENV, in a MARKS wide column."
   (cond
    ((plist-get item :checkbox)
     (etaf-node 'etaf-check-mark
@@ -620,71 +650,72 @@ column and the table never grows past the reading measure."
                                 (etaf-org-preview--color env :ok)
                               (etaf-org-preview--color env :muted)))
                nil))
-   ((plist-get item :term) nil)
    ((plist-get item :ordered)
     (etaf-node 'text
                (list :color (etaf-org-preview--color env :muted)
                      :font-family (etaf-org-preview--mono))
-               (list (or (plist-get item :counter)
-                         (format "%d." (or (plist-get item :number) 1))))))
+               (list (format (format "%%%ds" marks)
+                             (etaf-org-preview--list-marker-text item)))))
    (t (etaf-node 'text
                  (list :color (etaf-org-preview--color env :muted))
                  (list "•")))))
 
 (defun etaf-org-preview--item-views (blocks env)
   "Return BLOCKS rendered as list item content in ENV.
-A nested list gets two extra cells, so each level reads as one step in."
+A nested list is laid out by the content column itself, so each level steps in
+by that list's own marker column instead of by an extra fixed indent."
   (let (views)
     (dolist (block blocks)
-      (let ((view (etaf-org-preview--block-view block env)))
-        (when view
-          (when (eq (plist-get block :type) 'list)
-            (setq view (etaf-node 'box
-                                  (list :width 'stretch :padding-left '(ch 2))
-                                  (list view))))
-          (push view views))))
+      (when-let* ((view (etaf-org-preview--block-view block env)))
+        (push view views)))
     (nreverse views)))
 
 (defun etaf-org-preview--list-view (block env)
-  "Return the list View of BLOCK in ENV."
-  (let ((items nil))
-    (dolist (item (plist-get block :items))
-      (let* ((marker (etaf-org-preview--list-marker item env))
-             (term (plist-get item :term))
+  "Return the list View of BLOCK in ENV.
+The marker column is as wide as the widest mark plus one cell of air, and the
+content column starts right after it.  A description item puts its bold term on
+its own line and hangs the definition behind a quiet rule, the way a glossary
+reads."
+  (let* ((items (plist-get block :items))
+         (marks (etaf-org-preview--list-marks items))
+         (description (cl-some (lambda (item) (plist-get item :term)) items))
+         (views nil))
+    (dolist (item items)
+      (let* ((term (plist-get item :term))
              (content (etaf-org-preview--item-views (plist-get item :blocks) env)))
         (push
          (if term
-             (etaf-node 'flex
-                        (list :width 'stretch :gap '((lh 0) (ch 1))
-                              :align-items 'start)
+             (etaf-node 'column
+                        (list :width 'stretch :item-gap '(lh 0.25))
                         (list
                          (etaf-node 'box
-                                    (list :width 'max-content
-                                          :max-width (list 'ch 32))
-                                    (etaf-org-preview--inline-nodes term env
-                                                                    '(:font-weight bold)))
-                         (etaf-node 'text
-                                    (list :color (etaf-org-preview--color env :faint))
-                                    (list "："))
-                         (etaf-node 'column
-                                    (list :width 'stretch :min-width '(ch 0)
-                                          :item-gap '(lh 0.5))
+                                    (list :width 'stretch :wrap-mode 'word)
+                                    (etaf-org-preview--inline-nodes
+                                     term env '(:font-weight bold)))
+                         (etaf-node 'box
+                                    (list :width 'stretch
+                                          :border-left (list '(px 2) 'solid
+                                                             (etaf-org-preview--color
+                                                              env :border))
+                                          :padding-left '(ch 2))
                                     content)))
            (etaf-node 'flex
-                      (list :width 'stretch :gap '((lh 0) (ch 1))
-                            :align-items 'start)
+                      (list :width 'stretch :align-items 'start)
                       (list
                        (etaf-node 'box
-                                  (list :width '(ch 3) :flex-shrink 0)
-                                  (when marker (list marker)))
+                                  (list :width (list 'ch (1+ marks))
+                                        :flex-shrink 0)
+                                  (list (etaf-org-preview--list-marker
+                                         item env marks)))
                        (etaf-node 'column
                                   (list :width 'stretch :min-width '(ch 0)
-                                        :item-gap '(lh 0.5))
+                                        :item-gap '(lh 0.25))
                                   content))))
-         items)))
+         views)))
     (etaf-node 'column
-               (list :width 'stretch :item-gap '(lh 0.25))
-               (nreverse items))))
+               (list :width 'stretch
+                     :item-gap (list 'lh (if description 0.8 0.25)))
+               (nreverse views))))
 
 (defun etaf-org-preview--code-first-line (switches)
   "Return the first line number SWITCHES asks for, or nil.

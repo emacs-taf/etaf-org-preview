@@ -229,6 +229,16 @@
       "name": "etaf-org-preview-tests-live-edit-follows-the-unsaved-buffer",
       "file": "tests/etaf-org-preview-tests.el",
       "purpose": "An unsaved edit in the source buffer repaints the preview, so a preview can sit beside editing."
+    },
+    {
+      "name": "etaf-org-preview-tests-inline-source-shows-only-its-code",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "An inline source snippet renders its code without the src_LANG{ marker."
+    },
+    {
+      "name": "etaf-org-preview-tests-ordered-lists-keep-their-style-and-counter",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A parenthesized ordered list keeps its own markers, and a counter cookie overrides only its own item."
     }
   ]
 }

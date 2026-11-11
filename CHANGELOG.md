@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.2
+
+### Fixed
+
+- A list mark no longer reserves a wide fixed column: the marker column fits
+  the widest number in its list plus one cell, so a bullet or checkbox sits one
+  space from its text, and a two-digit number still lines up with a one-digit
+  one.
+- A parenthesized ordered list keeps `1)` instead of turning into `1.`, and an
+  item counter `[@3]` changes only its own number.
+- A nested list starts at its parent's text column instead of adding a second
+  fixed indent.
+
+### Changed
+
+- Description lists put the bold term on its own line and hang the definition
+  behind a quiet left rule, matching the shared Markdown glossary layout.
+- Tables drop the outer frame and the rules between body rows.  A header tint,
+  one rule under the header, hairline rules between columns and explicit
+  `|---` rule rows remain, so the table reads as columns instead of a
+  spreadsheet.
+
 ## 0.2.1
 
 ### Fixed

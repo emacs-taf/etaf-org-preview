@@ -635,5 +635,28 @@
             (when (buffer-live-p source) (kill-buffer source))))
       (delete-file file))))
 
+(ert-deftest etaf-org-preview-tests-inline-source-shows-only-its-code ()
+  "An inline source snippet shows its code, not the src_LANG{ marker."
+  (let ((session (etaf-org-preview-create
+                  :text "* 片段\n源码 src_elisp{(+ 1 2)} 在这里。\n")))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p (regexp-quote "(+ 1 2)") text))
+        (should-not (string-match-p "src_elisp" text))))))
+
+(ert-deftest etaf-org-preview-tests-ordered-lists-keep-their-style-and-counter ()
+  "A parenthesized list keeps `1)`, and a counter overrides one item only."
+  (let ((session (etaf-org-preview-create
+                  :text (concat "* 标题\n"
+                                "1) 括号一\n2) 括号二\n\n"
+                                "1. [@3] 第三\n4. 第四\n"))))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "1)" text))
+        (should (string-match-p "2)" text))
+        (should (string-match-p "3\\.\\|3[ ]" text))
+        (should (string-match-p "4\\." text))
+        (should-not (string-match-p "4)" text))))))
+
 (provide 'etaf-org-preview-tests)
 ;;; etaf-org-preview-tests.el ends here

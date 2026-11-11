@@ -139,3 +139,5 @@ make benchmark        # parse, mount, fold and refresh timings
 
 `examples/sample.org` is the maintained document every surface should still
 show; `examples/etaf-org-preview-demo.el` opens it.
+`examples/syntax-gallery.org` walks through every supported syntax and its
+common variants, with a checklist at the end.

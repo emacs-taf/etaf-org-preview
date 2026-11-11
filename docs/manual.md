@@ -118,13 +118,13 @@ A document without `#+TITLE` uses its file name, then the session title.
 | Org syntax | Rendering |
 | --- | --- |
 | Paragraph | One wrapped paragraph; adjacent CJK lines join without a space |
-| `-`, `+`, `*` lists | Bullets, nested with two extra cells per level |
-| `1.`, `1)` lists | The original numbers, right-aligned |
-| `[@3]` | Overrides the displayed number |
+| `-`, `+`, `*` lists | A bullet in a marker column just wide enough for the mark plus one cell of air; a nested list starts at its parent’s text column |
+| `1.`, `1)` lists | The original marker (`1.` or `1)`), padded to the widest number in the list |
+| `[@3]` | Overrides the displayed number of that item only |
 | `[ ]`, `[-]`, `[X]` | Three marks: an empty box, a dashed box for a task in progress, and a check |
-| `- term :: description` | Term, a faint `::`, then the description |
-| Tables | Full grid, so rows and columns both carry rules; header rule, alignment and width cookies, `<n>` minimum widths; a wide cell wraps inside its column instead of overflowing |
-| Multi-rule tables `|---` | One separator per rule row |
+| `- term :: description` | A bold term on its own line; the definition hangs behind a quiet left rule |
+| Tables | Header tint, one rule under the header and hairline rules between columns; no outer frame and no rule between body rows. Alignment and width cookies, `<n>` minimum widths; a wide cell wraps inside its column instead of overflowing |
+| Multi-rule tables `|---` | A hairline at each explicit rule row |
 | `#+BEGIN_SRC` | A code card with its language; the `-n` and `-n 20` switches add a line-number gutter |
 | `#+BEGIN_EXAMPLE` | A code card without a language |
 | `#+BEGIN_QUOTE` | An indented quote with a trailing `-- author` line |
