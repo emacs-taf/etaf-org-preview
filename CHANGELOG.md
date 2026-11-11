@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+
+- The manual's performance baseline named the pre-0.2.0 mount and edit costs.
+  It now states the measured 72 ms outline mount, 170 ms full mount and 26 ms
+  paragraph edit.
+
 ## 0.2.0
 
 ### Added
