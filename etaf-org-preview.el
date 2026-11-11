@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; Version: 0.2.2
+;; Version: 0.3.0
 ;; Package-Requires: ((emacs "29.1") (etaf "0.3.0") (etaf-ui "0.2.0"))
 ;; Keywords: hypermedia, docs, org
 ;; URL: https://github.com/emacs-taf/etaf-org-preview
@@ -14,21 +14,22 @@
 ;; Load this package with (require 'etaf-org-preview) after adding this
 ;; repository and the ETAF, ETAF UI, Ebox and ECSS roots to `load-path'.  The
 ;; previewer renders an Org document as a modern reading view: a centered
-;; measure with a typographic heading scale, keyword chips, planning lines,
-;; tags, nested and description lists, checkboxes, tables, source and example
+;; measure with a Markdown-style heading ladder, keyword chips, planning lines, tags,
+;; nested and description lists, checkboxes, tables, source and example
 ;; blocks, quotes, callouts, images, footnotes, a table of contents, property
 ;; chips and entities.  Display formulas and `mermaid' source blocks are drawn
-;; with mermaid-cli when it is installed.  Folding is structural: a closed
-;; section is not rendered at all, so a large document opens as an outline and
-;; unfolds on demand.  A publish keeps every unchanged block's instance, and a
-;; displayed preview follows edits in its source buffer before they are saved.
+;; with mermaid-cli when it is installed.  Every section is rendered in place:
+;; there is no headline fold control and no chevron; the top two levels keep the
+;; Markdown rule under their row.
+;; A publish keeps every unchanged block's instance, and a displayed preview
+;; follows edits in its source buffer before they are saved.
 ;;
 ;; A session is the unit of state.  `etaf-org-preview-create' builds one from
 ;; a file or from text, `etaf-org-preview-open' displays it in its own buffer,
-;; the navigation, folding and display functions below drive it, and
+;; the navigation and display functions below drive it, and
 ;; `etaf-org-preview-state' reports it as plain data.  Every displayed value
-;; is an ETAF reactive source, so a reload, a width change, a fold or a
-;; palette change repaints only what it touches.
+;; is an ETAF reactive source, so a reload, a width change or a palette change
+;; repaints only what it touches.
 ;;
 ;; The preview is read-only.  It never writes the document, never runs Babel,
 ;; never evaluates `#+TBLFM:' and never expands `#+INCLUDE'.  Parsing never
@@ -55,8 +56,8 @@
 ;; prompt for a file.  Interactively it defaults to the current buffer's Org
 ;; file and then to a file prompt; a file that already has a preview buffer is
 ;; selected instead of rendered twice.  The buffer is an ETAF application
-;; whose root keys add folding, outline navigation, link activation, reloading,
-;; theming and closing; a window resize reflows through the framework's
+;; whose root keys add outline navigation, link activation, reloading, theming
+;; and closing; a window resize reflows through the framework's
 ;; viewport update, so the document is never rebuilt for a geometry change.
 ;; A preview opened from a file follows it: saving the source, or changing it
 ;; on disk, repaints the document after the write settles and keeps the reader
@@ -74,21 +75,20 @@
 ;; `etaf-org-preview-create' to mount a real document yourself with
 ;; `etaf-mount', for example inside a tab or a larger layout.
 ;;
-;; Function: etaf-org-preview-create (&key file text title theme startup toc)
+;; Function: etaf-org-preview-create (&key file text title theme toc)
 ;; Return a new headless preview session.
 ;; Exactly one of FILE (an Org document read from disk) or TEXT (the document
 ;; itself) is required; a missing or unreadable FILE signals
 ;; `etaf-org-preview-error'.  TITLE overrides the document title.  THEME
 ;; selects a palette from `etaf-org-preview-themes' and defaults to
-;; `etaf-org-preview-theme'.  STARTUP overrides the initial fold state when
-;; the document names none, and TOC overrides the `#+OPTIONS: toc' depth.  The
+;; `etaf-org-preview-theme'.  TOC overrides the `#+OPTIONS: toc' depth.  The
 ;; session owns no buffer, so it is a complete headless preview for scripts
 ;; and tests.
 ;;
 ;; Function: etaf-org-preview-state (session)
 ;; Return SESSION's state as a detached plist snapshot.
 ;; Keys are `:file', `:title', `:author', `:date', `:keywords', `:filetags',
-;; `:theme', `:background', `:width', `:startup',
+;; `:theme', `:background', `:width',
 ;; `:buffer', `:outline' (a list of (LEVEL TITLE ID TODO TAGS)), `:sections',
 ;; `:blocks', `:footnotes', `:degraded', `:counts' and `:error'.
 ;; `:background' is `palette' when the preview paints its palette's page
@@ -100,8 +100,8 @@
 ;; Re-read and re-parse SESSION's document and return it.
 ;; A session created from text re-parses the original text; a file session
 ;; re-reads the file.  A read failure signals `etaf-org-preview-error' and
-;; leaves the published document untouched.  Fold state survives for every
-;; section whose id is still present.
+;; leaves the published document untouched.  Section ids and reading anchors
+;; survive for every section that is still present.
 ;;
 ;; Function: etaf-org-preview-set-theme (session theme)
 ;; Show SESSION with palette THEME and return it.
@@ -118,9 +118,8 @@
 ;;
 ;; Function: etaf-org-preview-locate (session index)
 ;; Move point to SESSION's outline heading INDEX and recenter.
-;; INDEX is zero-based into `etaf-org-preview-outline'.  Folded ancestors are
-;; opened first.  Return the buffer position, or nil when the heading is not
-;; visible.
+;; INDEX is zero-based into `etaf-org-preview-outline'.  Return the buffer
+;; position, or nil when the heading is not in the document.
 ;;
 ;; Function: etaf-org-preview-fold (session id state)
 ;; Set the fold state of SESSION's section ID to STATE and return SESSION.
@@ -149,16 +148,14 @@
 ;;
 ;; Function: etaf-org-preview-next-heading (&optional session)
 ;;;###autoload (autoload 'etaf-org-preview-next-heading "etaf-org-preview" nil t)
-;; Move point to the next visible headline of the current preview.
+;; Move point to the next headline of the current preview.
 ;; SESSION defaults to the current preview buffer's session; a script driving
-;; a headless mount passes its own session.
-;; Headlines hidden by a folded ancestor are skipped.  Reports "No further
-;; heading" at the end and signals `user-error' when the buffer is not a
-;; preview.
+;; a headless mount passes its own session.  Reports "No further heading" at
+;; the end and signals `user-error' when the buffer is not a preview.
 ;;
 ;; Function: etaf-org-preview-previous-heading (&optional session)
 ;;;###autoload (autoload 'etaf-org-preview-previous-heading "etaf-org-preview" nil t)
-;; Move point to the previous visible headline of the current preview.
+;; Move point to the previous headline of the current preview.
 ;; SESSION defaults to the current preview buffer's session.
 ;;
 ;; Function: etaf-org-preview-adjust-width (session delta)
@@ -174,13 +171,6 @@
 ;; palette, including its page background.  `etaf-org-preview-set-theme' and
 ;; `etaf-org-preview-cycle-theme' always select an explicit palette.
 ;;
-;; Variable: etaf-org-preview-startup (default `content')
-;; Fold state used when a document does not name one.
-;; `content' opens every section, `overview' opens the first level only and
-;; `folded' keeps every section closed.  A `#+STARTUP:' line wins, and a
-;; document larger than `etaf-org-preview-large-document-chars' starts as an
-;; outline.
-;;
 ;; Variable: etaf-org-preview-width-min (default 40)
 ;; Narrowest reading measure in character cells.
 ;;
@@ -195,12 +185,6 @@
 ;; Drawing needs mermaid-cli (`mmdc'); without it, or with this nil, both keep
 ;; their source text.  A picture is cached by source, palette and body size,
 ;; and a page never waits for a program: a finished picture repaints its block.
-;;
-;; Variable: etaf-org-preview-expand-limit (default 4000)
-;; Body blocks a global expansion may mount at once.
-;;
-;; Variable: etaf-org-preview-large-document-chars (default 400000)
-;; Document size, in characters, that opens as an outline.
 ;;
 ;; Error: etaf-org-preview-error
 ;; Invalid org preview session or document input

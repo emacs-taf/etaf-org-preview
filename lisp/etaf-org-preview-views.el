@@ -87,30 +87,31 @@ labels rather than as words with a fill."
                               (list text)))))
 
 (defun etaf-org-preview--heading-size (env level)
-  "Return the heading size in ENV for LEVEL."
+  "Return the heading size in ENV for LEVEL.
+The ladder is the shared Markdown one: level 1 is twice the body, level 2 one
+and a half, level 3 one and a quarter, level 4 a little above the body, and
+deeper levels keep the body size so a heading is never smaller than the text
+it introduces."
   (etaf-org-preview--scaled
    env
    (pcase level
-     (1 1.50)
-     (2 1.34)
-     (3 1.18)
-     (4 1.06)
+     (1 2.00)
+     (2 1.50)
+     (3 1.25)
+     (4 1.10)
      (_ 1.00))))
 
-(defun etaf-org-preview--heading-indent (level)
-  "Return the extra left padding of a LEVEL heading, in character cells."
-  (if (> level 4) (min 4 (- level 4)) 0))
+(defun etaf-org-preview--heading-ink (level)
+  "Return the palette key a LEVEL heading is written in.
+Levels one to four use the heading ink and a deeper level the muted ink; rank
+shows in the type scale, the colour and the rule under the top two levels."
+  (if (<= level 4) :heading :muted))
 
-(defun etaf-org-preview--heading-gap (_env level)
-  "Return the space above a LEVEL heading, in body lines.
-The gap separates sections without pushing a collapsed outline apart: a level
-one section opens with two body lines, and each deeper level adds less."
-  (list 'lh (pcase level
-              (1 1.6)
-              (2 1.2)
-              (3 0.9)
-              (4 0.6)
-              (_ 0.45))))
+(defun etaf-org-preview--heading-gap (_env _level)
+  "Return one body line above a heading.
+Markdown separates every block with one blank line, so a heading keeps that
+same rhythm instead of a margin that grows with its level."
+  (list 'lh 1.0))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Inline rendering
@@ -416,6 +417,26 @@ dimensions fit, first the reading measure and then the row budget."
                 (max 1 (round (* rows scale)))))
       (cons (min 48 max-columns) 12))))
 
+(defun etaf-org-preview--media-grid-for-pixels (pixels max-columns)
+  "Return the (COLUMNS . ROWS) grid for PIXELS capped by MAX-COLUMNS.
+One scale decides both sides, so a diagram keeps its aspect ratio; rounding
+each side on its own made a drawing a few percent too wide or too tall for
+its own height."
+  (if (or (not (consp pixels))
+          (not (numberp (car pixels)))
+          (not (numberp (cdr pixels))))
+      (cons (min max-columns 48) 14)
+    (let* ((cell-width (max 1 (or (ignore-errors (frame-char-width)) 8)))
+           (cell-height (max 1 (or (ignore-errors (frame-char-height)) 16)))
+           (natural-width (float (car pixels)))
+           (natural-height (float (cdr pixels)))
+           (fitted (min natural-width (* max-columns cell-width)))
+           (fitted-height (* natural-height (/ fitted natural-width)))
+           (rows (max 1 (round (/ fitted-height cell-height))))
+           (scale (min 1.0 (/ (* rows cell-height) natural-height)))
+           (columns (max 1 (round (/ (* natural-width scale) cell-width)))))
+      (cons columns rows))))
+
 (defun etaf-org-preview--image-card (media env)
   "Return the image card for MEDIA in ENV, or a placeholder card."
   (let* ((path (plist-get media :path))
@@ -526,7 +547,8 @@ surface and LAST drops the closing rule."
         (push (etaf-node 'box
                          (list :width (list 'ch (+ 2 width))
                                :flex-shrink 0
-                               :padding '((lh 0) (ch 1))
+                               :padding-inline '(ch 1)
+                               :padding-bottom '(lh 0.5)
                                :wrap-mode 'word
                                :text-align (or (nth index (plist-get env :table-aligns))
                                                'left))
@@ -538,7 +560,7 @@ surface and LAST drops the closing rule."
         (push separator cells))
       (cl-incf index))
     (etaf-node 'flex
-               (list :width 'stretch :align-items 'start
+               (list :width 'stretch :align-items 'center
                      :background-color (when header
                                          (etaf-org-preview--color env :table-header))
                      ;; One rule under the header keeps it apart from the
@@ -589,7 +611,7 @@ column and the table never grows past the reading measure."
       (cl-incf index))
     (let* ((total (+ (* 2 columns) (apply #'+ widths) separator-cells))
            (table (etaf-node 'column
-                             (list :width 'stretch)
+                             (list :width 'stretch :item-gap '(lh 0.5))
                              (nreverse row-views))))
       (etaf-node 'column
                  (list :width 'stretch :item-gap '(lh 0.5))
@@ -686,7 +708,7 @@ reads."
         (push
          (if term
              (etaf-node 'column
-                        (list :width 'stretch :item-gap '(lh 0.25))
+                        (list :width 'stretch :item-gap '(lh 0.45))
                         (list
                          (etaf-node 'box
                                     (list :width 'stretch :wrap-mode 'word)
@@ -697,7 +719,8 @@ reads."
                                           :border-left (list '(px 2) 'solid
                                                              (etaf-org-preview--color
                                                               env :border))
-                                          :padding-left '(ch 2))
+                                          :padding-left '(ch 2)
+                                          :padding-top '(lh 0.10))
                                     content)))
            (etaf-node 'flex
                       (list :width 'stretch :align-items 'start)
@@ -709,12 +732,12 @@ reads."
                                          item env marks)))
                        (etaf-node 'column
                                   (list :width 'stretch :min-width '(ch 0)
-                                        :item-gap '(lh 0.25))
+                                        :item-gap '(lh 0.35))
                                   content))))
          views)))
     (etaf-node 'column
                (list :width 'stretch
-                     :item-gap (list 'lh (if description 0.8 0.25)))
+                     :item-gap (list 'lh (if description 1.0 0.40)))
                (nreverse views))))
 
 (defun etaf-org-preview--code-first-line (switches)
@@ -1203,12 +1226,10 @@ HIDDEN also shows the recorded lines under the summary."
                    :padding-right '(ch 0.5))
              (list (etaf-node 'text nil (list (format "#%s" priority))))))
 
-(defun etaf-org-preview--heading-view (section state env)
-  "Return the headline row of SECTION at fold STATE in ENV.
-The row is the fold affordance: pressing it cycles the section."
+(defun etaf-org-preview--heading-view (section _state env)
+  "Return the headline row of SECTION at STATE in ENV.
+The row is plain reading text: it carries no fold affordance."
   (let* ((level (max 1 (etaf-org-preview-section-level section)))
-         (has-content (or (etaf-org-preview-section-body section)
-                          (etaf-org-preview-section-children section)))
          (todo (etaf-org-preview-section-todo section))
          (kind (etaf-org-preview--keyword-kind
                 todo (plist-get env :todo-keywords)))
@@ -1220,16 +1241,6 @@ The row is the fold affordance: pressing it cycles the section."
                         level
                         (if todo (concat todo " ") "")
                         (etaf-org-preview-section-title-plain section)))
-         (chevron (if (eq state 'folded) "chevron-right" "chevron-down"))
-         (chevron-box (etaf-node 'box
-                                 (list :width '(ch 2) :flex-shrink 0)
-                                 (when has-content
-                                   (list (etaf-node 'etaf-ui-icon
-                                                    (list :name chevron
-                                                          :size 0.9
-                                                          :color (etaf-org-preview--color
-                                                                  env :muted))
-                                                    nil)))))
          (title-box (etaf-node 'box
                                (list :width 'stretch
                                      :min-width '(ch 10)
@@ -1240,9 +1251,9 @@ The row is the fold affordance: pressing it cycles the section."
                                 (list :font-size
                                       (etaf-org-preview--heading-size env level)
                                       :font-weight 'bold
-                                      :color (etaf-org-preview--color env :heading)))))
+                                      :color (etaf-org-preview--color
+                                              env (etaf-org-preview--heading-ink level))))))
          (left (append
-                (list chevron-box)
                 (when todo
                   (list (etaf-org-preview--keyword-chip todo kind env)))
                 (when priority
@@ -1265,7 +1276,15 @@ The row is the fold affordance: pressing it cycles the section."
                                :justify-content 'space-between
                                :align-items 'center
                                :flex-wrap 'wrap
-                               :gap '((lh 0.2) (ch 1)))
+                               :gap '((lh 0.2) (ch 1))
+                               ;; Markdown's top two headings carry a rule;
+                               ;; Org keeps the same reading rhythm.
+                               :border-bottom (when (<= level 2)
+                                                (list '(px 1) 'solid
+                                                      (etaf-org-preview--color
+                                                       env :heading-rule)))
+                               :padding-bottom (when (<= level 2)
+                                                 '(lh 0.25)))
                          (list (etaf-node 'flex
                                           (list :flex-grow 1 :flex-shrink 1
                                                 :min-width '(ch 0)
@@ -1281,18 +1300,8 @@ The row is the fold affordance: pressing it cycles the section."
                (list :width 'stretch
                      :id (concat "org-section-" (etaf-org-preview-section-id section))
                      :padding-top (etaf-org-preview--heading-gap env level)
-                     :padding-left (list 'ch (etaf-org-preview--heading-indent level))
-                     :on-press (lambda ()
-                                 (etaf-org-preview--act
-                                  env :toggle (etaf-org-preview-section-id section)))
-                     :role 'button
-                     :tab-index 0
-                     :pointer 'hand
-                     :aria-label label
-                     :help-echo "按 RET 折叠或展开这一节")
-               (append (list row)
-                       (when (<= level 2)
-                         (list (etaf-org-preview--rule env 0.3)))))))
+                     :aria-label label)
+               (list row))))
 
 (etaf-define-component etaf-org-preview-block (&key session block)
   "Render one published body BLOCK of SESSION.
@@ -1429,12 +1438,7 @@ opening reads as a title page instead of a stack of metadata."
                   (list (etaf-org-preview--spacer 0.5)
                         (etaf-org-preview--chip
                          env (format "%d 处已降级" degraded) :muted :panel)))
-                (when (plist-get env :large-document)
-                  (list (etaf-org-preview--spacer 0.5)
-                        (etaf-node 'text
-                                   (list :color (etaf-org-preview--color env :faint)
-                                         :font-size (etaf-org-preview--scaled env 0.82))
-                                   (list "文档较大，已按大纲展开"))))))))
+                ))))
 
 (defun etaf-org-preview--toc-row (entry base env)
   "Return one table of contents row for ENTRY under BASE indentation."

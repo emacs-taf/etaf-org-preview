@@ -25,11 +25,9 @@ buffer.
 
 | Key | Action |
 | --- | --- |
-| `C-c TAB` | Fold or unfold the section around point |
-| `C-c f` | Switch between the outline (headlines only) and the full document |
-| `C-c n` / `C-c p` | Next / previous visible headline (`n` also works) |
+| `C-c n` / `C-c p` | Next / previous headline (`n` also works) |
 | `C-c j` | Choose a headline from the completion list |
-| `RET` or click | Activate a link, a footnote, an image; fold a headline |
+| `RET` or click | Activate a link, a footnote or an image |
 | `C-c C-o` | Activate the control at point |
 | `C-c t` | Show or hide the table of contents |
 | `C-c v` | Show or hide comments, properties, drawers and metadata lines |
@@ -40,31 +38,24 @@ buffer.
 | `q` | Close the preview |
 
 `TAB`, `S-TAB`, `?`, `SPC`, `DEL`, `C-v`, `M-v`, the wheel and `n`/`q` are
-framework-owned keys. An application cannot rebind them, which is why folding
-sits on `C-c TAB` and the outline switch on `C-c f`. Native search, marks,
+framework-owned keys. An application cannot rebind them; native search, marks,
 windows and scrolling work unchanged.
 
-## Folding
+## Headings
 
-Every headline has three states:
+Every section heading uses the shared Markdown type ladder. Level 1 is twice
+the body, level 2 one and a half times the body, level 3 one and a quarter,
+level 4 a little above the body, and deeper levels keep the body size in muted
+ink. Levels 1 and 2 carry the Markdown rule, and every heading keeps one blank
+line above it. No level indents or acts as a fold button: TODO keywords,
+priority, tags and planning lines give the rest of the row its shape.
 
-| State | Shows |
-| --- | --- |
-| `folded` | The headline row only |
-| `children` | The headline row and its child headlines, no body |
-| `open` | The headline, its body and its children |
-
-`C-c TAB` cycles `folded → children → open → folded`; a headline without
-children skips `children`. Entering `children` closes the whole subtree, and
-each child headline can then be opened on its own. `C-c f` switches the whole document between the
-outline and the full view.
-
-Folding is structural. A closed section is not rendered, so its images are
-not prepared, its tables are not measured and its blocks are not mounted.
-That is what keeps a large file fast: a 120-section document mounts in about
-72 ms as an outline and about 170 ms fully expanded. An edit repaints only the
-block it changed, so a paragraph costs about 26 ms including the painted
-page.
+The document title is the one larger type on the page. A 120-section document
+mounts in about 170 ms, and an edit repaints only the block it changed, so a
+paragraph costs about 26 ms including the painted page. `make benchmark` prints
+these numbers with `ORG_PREVIEW_BENCH_SECTIONS` controlling the size; the
+registered scenarios in `benchmarks/performance-scenarios.el` cover parse,
+mount, edit and refit for the maintained sample.
 
 A document opened from a file follows that file. Saving the source, changing
 it on disk, or typing in its buffer without saving repaints after the edit
@@ -86,7 +77,7 @@ it stands instead of being replaced by the file.
 | `#+PRIORITIES:` | Priority range |
 | `#+OPTIONS: toc:n` | Table-of-contents depth; `toc:nil` hides it |
 | `#+OPTIONS: tags:nil todo:nil pri:nil` | Hides tags, keywords or priorities |
-| `#+STARTUP: overview\|content\|folded` | Initial fold state |
+| `#+STARTUP:` | Ignored by the reader; every normal section opens |
 | `#+MACRO:` | Inline macro expansion, including `title`, `author`, `date`, `email` and `input-file` |
 | `#+LINK:` | Link abbreviations |
 | `#+CAPTION:`, `#+NAME:`, `#+ATTR_*:` | Attached to the next block; the caption renders under it. `:width` and `:height` (pixels or a percentage) cap an image, `:alt` becomes its help text |
@@ -101,13 +92,13 @@ A document without `#+TITLE` uses its file name, then the session title.
 
 | Org syntax | Rendering |
 | --- | --- |
-| `*` … `********` | Four heading sizes, then bold with a small indent |
+| `*` … `********` | The Markdown ladder: 2.0, 1.5, 1.25, 1.1, then body size; levels 1 and 2 carry a rule, no indent |
 | `TODO`/`DONE`-style keywords | A chip; `NEXT`/`STARTED` read as in progress, `WAIT`/`HOLD` as waiting, `CANCELLED` as dropped |
 | `[#A]` priority | A thin outlined chip |
 | `:tag:list:` | Right-aligned chips |
 | `[2/5]`, `[50%]` cookie | A monospace pill |
-| `COMMENT` | A “注释” chip and a folded start |
-| `:ARCHIVE:` tag or property | An “归档” chip and a folded start |
+| `COMMENT` | A “注释” chip; its body stays out of the reading page |
+| `:ARCHIVE:` tag or property | An “归档” chip; its body stays out of the reading page |
 | `SCHEDULED:`, `DEADLINE:`, `CLOSED:` | A planning line with written labels and dates |
 | `:PROPERTIES:` | A chip with the entry count; `C-c v` shows the properties grid |
 | `LOGBOOK` clock entries | A chip with the entry count and total time; `C-c v` also shows the recorded lines |
@@ -172,7 +163,7 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `attachment:file` | Treated as a file relative to the document |
 | `elisp:`, `shell:` and unknown schemes | Reported as not activatable; nothing runs |
 
-Folded ancestors are opened before a jump, and the target is centered.
+The target is centered, and an anchor in another section is reached in place.
 
 ## Media
 
@@ -216,16 +207,14 @@ Unsupported constructs are shown as source rather than as an error:
 
 ```elisp
 (let* ((session (etaf-org-preview-create :file "~/notes.org"
-                                         :theme 'dark
-                                         :startup 'overview))
+                                         :theme 'dark))
        (state (etaf-org-preview-state session)))
   (plist-get state :counts)   ; (:todo 3 :done 8 :deadline 2 :overdue 1)
-  (etaf-org-preview-fold-all session 'open)
   (etaf-org-preview-refresh session))
 ```
 
 `etaf-org-preview-create` takes `:file` or `:text`, plus optional `:title`,
-`:theme`, `:startup` and `:toc`. A read failure signals
+`:theme` and `:toc`. A read failure signals
 `etaf-org-preview-error`; `etaf-org-preview-refresh` keeps the last good
 document when a reload fails.
 

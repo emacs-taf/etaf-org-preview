@@ -8,7 +8,7 @@
 | `lisp/etaf-org-preview-entities.el` | Entity names to Unicode, plus the sub- and superscript tables. Generated from `org-entities` by `scripts/generate-entities.el`; never edited by hand. |
 | `lisp/etaf-org-preview-parse.el` | Pure parser: text to a document tree. No file access, no buffer, no frame. |
 | `lisp/etaf-org-preview-theme.el` | Fixed palettes, face-derived palette, heading contrast rule, ETAF UI token bridge. |
-| `lisp/etaf-org-preview-model.el` | Session state: load, parse errors, fold cells, navigation, targets, media resolution, keyed publishing, environment cache, refresh and live follow. |
+| `lisp/etaf-org-preview-model.el` | Session state: load, parse errors, section cells, navigation, targets, media resolution, keyed publishing, environment cache, refresh and live follow. |
 | `lisp/etaf-org-preview-views.el` | Tree to ETAF Views: inline runs, blocks, keyed block and headline Components, document layout. |
 | `lisp/etaf-org-preview-typeset.el` | Optional drawing of display formulas and `mermaid` blocks through mermaid-cli, with a content-and-palette cache and asynchronous repaint. |
 | `lisp/etaf-org-preview-app.el` | Application shell: buffer, root keys, commands, width fitting. |
@@ -25,7 +25,7 @@ application layer reads a buffer.
 ```
 file or text ──> parser ──> document tree (plists + section structs)
                                 │
-       palette / width / fold cells / hidden flag (reactive sources)
+       palette / width / section cells / hidden flag (reactive sources)
                                 ↓
                             session
                                 ↓
@@ -36,9 +36,9 @@ file or text ──> parser ──> document tree (plists + section structs)
 
 - The parser is a pure function of the text and the document's own settings.
 - The session is the only mutable state. Width, palette, hidden content,
-  document and every section's fold state are separate reactive sources.
+  document and every section's state are separate reactive sources.
 - The views are a function of the tree plus an environment plist that carries
-  the palette, the measure, the base font size, the fold-cell accessor and the
+  the palette, the measure, the base font size, the section-cell accessor and the
   action callbacks.
 - The application layer only builds the buffer, declares keys and binds
   commands. A geometry change reflows through the framework's viewport update;
@@ -78,47 +78,35 @@ and never re-splits the text.
    it; an export snippet keeps its backend apart from its payload, and only the
    payload is drawn.
 6. **Ids.** A section id is its `CUSTOM_ID`, else its `ID`, else a positional
-   path (`s1.1`). Fold state, anchors and outline rows all key off that id, so
-   a reload that moves a section keeps its fold state only when the id is
+   path (`s1.1`). Section state, anchors and outline rows all key off that id,
+   so a reload that moves a section keeps its anchor only when the id is
    stable.
 
 Degradations are counted per kind (`unclosed-block`, `drawer`,
 `dynamic-block`, `macro`, `directive`) and surface as one chip in the title
 block.
 
-## Folding
+## Section state
 
-`etaf-org-preview-section` is a Component. It receives its own fold cell and
-reads it during render, so writing one cell repaints one section and nothing
-else. The report after a single fold is a scoped update: strategy `lines`,
-a handful of edits.
+`etaf-org-preview-section` is a Component that receives its own section cell.
+The reader has no fold control: every ordinary section is rendered in place,
+so a headline carries no chevron and no press action. The cell still has two
+states, and only a `COMMENT` section or an `:ARCHIVE:` section uses the hidden
+one; its body stays out of the reading page while the headline and its marker
+remain visible.
 
-Three states:
-
-| State | Rendered |
-| --- | --- |
-| `folded` | Headline row, planning line, property and logbook chips |
-| `children` | The above plus child headline Components; the body is skipped |
-| `open` | Body blocks and children |
-
-Entering `children` also writes every descendant cell as `folded` in the same
-`etaf-batch`, so the subtree starts closed; each child then renders from its
-own cell, and opening one reveals only that child's body. `C-c f` writes every
-cell in one batch, so the document repaints once.
-
-The initial state comes from `#+STARTUP:`; `overview` renders headlines only,
-`content` opens everything. A document larger than
-`etaf-org-preview-large-document-chars` starts as an outline even without a
-`#+STARTUP:` line.
+A published entry reuses the section's Component call while its key survives,
+so a body edit rebuilds only the sections on its path and an unchanged sibling
+keeps its instance, Hosts and state.
 
 ## Heading anchors and navigation
 
-Each headline Component's root column carries `:id "org-section-<id>"` and
-`:role 'button`. Positions are read back from the mounted tree with
+Each headline Component's root column carries `:id "org-section-<id>"`.
+Positions are read back from the mounted tree with
 `etaf-runtime-host-props-entries` and `etaf-host-ref-position`, so navigation
 and imenu use the renderer's own positions instead of a second index that could
-drift. `etaf-org-preview-locate` opens folded ancestors first, then moves point
-to the first non-blank row of the heading.
+drift. `etaf-org-preview-locate` moves point to the first non-blank row of the
+heading.
 
 ## Media
 
@@ -155,15 +143,13 @@ background in place.
 
 | Change | Update |
 | --- | --- |
-| Fold one section | One fold cell → one section Component |
-| Fold everything | One batch over all fold cells → one flush |
 | Palette | Theme ref → republish so drawn pictures follow the page, then recolored blocks |
 | Reading measure | Width ref → block environment change, reflow, no re-parse |
 | Refresh from an edit | New document with keyed entries; only the changed block's call is new |
 | Hidden content | Hidden ref → block/section environment change, no publish |
 
-The fold path is the one that has to stay cheap; a regression test asserts that
-folding one section publishes a small buffer update rather than a full one.
+A body edit is the path that has to stay cheap: its key changes on one block
+and on the headlines above it, and every other block keeps its Component call.
 
 ## Keyed publishing
 
@@ -173,7 +159,7 @@ its heading fields, its body-block keys and its child keys. An entry whose key
 survives reuses the previous Component call, so ETAF hands the runtime the same
 value and the block never renders again. An edit therefore creates one new
 block call on its path to the root; every unchanged sibling keeps its instance,
-hosts and fold cell. Two identical blocks are told apart by an occurrence
+hosts and state. Two identical blocks are told apart by an occurrence
 number in the key.
 
 The rendering environment is built from reactive inputs only (palette, width,
@@ -219,17 +205,12 @@ rendered lines, 900×50 viewport), Emacs 31, Apple silicon:
 | --- | --- |
 | Parse | 34 ms |
 | Mount, every section open | 170 ms |
-| Mount, `overview` (headlines only) | 72 ms |
-| Fold one section and flush | 0.4 ms |
 | Edit one paragraph and repaint | 26 ms |
 
-The outline mount is the number that matters for large files: mounting only
-headlines costs about a third of the fully expanded tree, and each expanded
-section adds only its own content. A publish keys every block by content, so
-the edit row repaints one paragraph instead of the document. `make benchmark`
-prints these numbers with
+A publish keys every block by content, so the edit row repaints one paragraph
+instead of the document. `make benchmark` prints these numbers with
 `ORG_PREVIEW_BENCH_SECTIONS` controlling the size; the registered scenarios in
-`benchmarks/performance-scenarios.el` cover parse, mount, fold and refit for the
+`benchmarks/performance-scenarios.el` cover parse, mount, edit and refit for the
 shared performance driver.
 
 ## Correctness boundaries
@@ -247,7 +228,7 @@ shared performance driver.
 | Layer | What it proves |
 | --- | --- |
 | Document model | Metadata, outline fields, counts, detached snapshots, refresh success and failure |
-| Folding | Three states, hidden bodies, global fold, unknown ids, scoped update size |
+| Section state | Comment and archive bodies stay hidden, a body edit repaints a scoped region |
 | Rendering | Emphasis faces, entity and subscript spelling, inline links, timestamps, planning, checkboxes, description lists, tables, code, callouts, footnotes, comments, degraded blocks, media placeholders |
 | Display | Palette cycling and rejection, measure clamping, TOC toggle, narrow mount |
 | Navigation | Locate moves point to the heading row of the chosen outline entry |

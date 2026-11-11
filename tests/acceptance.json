@@ -81,9 +81,9 @@
       "purpose": "The children fold state shows child headlines and hides both the parent body and the child bodies."
     },
     {
-      "name": "etaf-org-preview-tests-overview-startup-shows-headlines-only",
+      "name": "etaf-org-preview-tests-sections-open-by-default",
       "file": "tests/etaf-org-preview-tests.el",
-      "purpose": "Starting in the overview state renders every headline with no body, which is the cheap first paint for a large document."
+      "purpose": "Every ordinary section body is rendered in the reader."
     },
     {
       "name": "etaf-org-preview-tests-fold-all-updates-every-section",

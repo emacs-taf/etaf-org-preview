@@ -11,8 +11,8 @@
 ;; so shared ETAF UI Components follow the document colors.
 ;;
 ;; `etaf-org-preview-open' opens the session as an ETAF application: the
-;; buffer, its root keys, the reading measure and the commands for folding,
-;; outline navigation, links, reloading and theming.  A window resize reflows
+;; buffer, its root keys, the reading measure and the commands for outline
+;; navigation, links, reloading and theming.  A window resize reflows
 ;; through the framework's viewport update, so the application never rebuilds
 ;; the document for a geometry change.
 
@@ -30,9 +30,7 @@
   (format "*ETAF Org: %s*" (file-name-nondirectory file)))
 
 (defconst etaf-org-preview--keys
-  '(("C-c TAB" etaf-org-preview-toggle-fold "折叠/展开当前节")
-    ("C-c f" etaf-org-preview-cycle-levels "切换显示层级")
-    ("n" etaf-org-preview-next-heading "下一个标题")
+  '(("n" etaf-org-preview-next-heading "下一个标题")
     ("C-c n" etaf-org-preview-next-heading "下一个标题")
     ("C-c p" etaf-org-preview-previous-heading "上一个标题")
     ("C-c j" etaf-org-preview-goto-heading "选择标题")
@@ -47,7 +45,7 @@
     ("q" etaf-org-preview-close "关闭预览"))
   "Root keys of a preview opened by `etaf-org-preview-open'.
 Native scrolling, isearch and RET activation stay available; the keys only add
-folding, outline navigation, links, reloading, theming and closing.")
+outline navigation, links, reloading, theming and closing.")
 
 (defun etaf-org-preview--current-session ()
   "Return the preview session of the current buffer."
@@ -58,34 +56,8 @@ folding, outline navigation, links, reloading, theming and closing.")
 ;;; Commands
 ;;; ---------------------------------------------------------------------------
 
-(defun etaf-org-preview--section-at-point (session)
-  "Return the id of the section around point in SESSION.
-Point before the first headline falls back to the first section."
-  (or (etaf-org-preview--reading-section session)
-      (nth 2 (car (etaf-org-preview-outline session)))))
-
-(defun etaf-org-preview-toggle-fold ()
-  "Fold or unfold the section around point."
-  (interactive)
-  (let* ((session (etaf-org-preview--current-session))
-         (id (etaf-org-preview--section-at-point session)))
-    (if (not id)
-        (message "This document has no headlines")
-      (etaf-org-preview--toggle-fold session id))))
-
-(defun etaf-org-preview-cycle-levels ()
-  "Cycle the document between the overview, two levels and everything."
-  (interactive)
-  (let* ((session (etaf-org-preview--current-session))
-         (state (etaf-org-preview--cycle-global session)))
-    (etaf-org-preview--flush session)
-    (message "显示层级：%s" (pcase state
-                            ('overview "仅标题")
-                            ('content "全部展开")
-                            (_ "全部折叠")))))
-
 (defun etaf-org-preview-next-heading (&optional session)
-  "Move point to the next visible headline.
+  "Move point to the next headline.
 SESSION defaults to the current preview buffer's session; pass one when
 driving a headless mount from a script."
   (interactive)
@@ -94,7 +66,7 @@ driving a headless mount from a script."
       (message "No further heading"))))
 
 (defun etaf-org-preview-previous-heading (&optional session)
-  "Move point to the previous visible headline.
+  "Move point to the previous headline.
 SESSION defaults to the current preview buffer's session."
   (interactive)
   (let ((session (or session (etaf-org-preview--current-session))))

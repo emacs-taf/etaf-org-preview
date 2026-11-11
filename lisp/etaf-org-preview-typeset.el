@@ -108,85 +108,32 @@ program the string `unspecified-bg' and mermaid would reject the drawing."
   (cons (if (etaf-org-preview-typeset--dark-p env) 'dark 'light)
         (etaf-org-preview-typeset--color env :ink)))
 
-(defun etaf-org-preview-typeset--key (kind source env)
-  "Return the cache key of KIND drawn from SOURCE for ENV's surface."
-  (let ((colors (etaf-org-preview-typeset--colors env)))
-    (secure-hash 'sha1
-                 (format "%s\n%s\n%s\n%s\n%d"
-                         kind source
-                         (car colors) (cdr colors)
-                         (if (eq kind 'math)
-                             (etaf-org-preview-typeset--pixels)
-                           0)))))
+(defconst etaf-org-preview-mermaid-fonts
+  '("LXGW WenKai" "LXGW WenKai Mono" "PingFang SC" "Hiragino Sans GB"
+    "Helvetica Neue" "Arial" "sans-serif")
+  "Families a diagram falls back to when the reader's own font lacks a glyph.
+The WenKai faces carry the CJK shapes a diagram label needs; the rest are
+families every desktop has, so a label is always measurable.")
 
-(defun etaf-org-preview-typeset--path (key)
-  "Return the PNG path of KEY."
-  (expand-file-name (concat key ".png") etaf-org-preview-typeset--cache-directory))
-
-(defun etaf-org-preview-typeset--kind (block)
-  "Return how BLOCK is drawn, or nil when it keeps its source.
-A display formula and a LaTeX environment are math; a `mermaid' source block is
-the diagram language Org users already write as a source block."
-  (pcase (plist-get block :type)
-    ('display-math 'math)
-    ('latex-environment 'math)
-    ('src-block (and (equal (downcase (or (plist-get block :lang) "")) "mermaid")
-                     'mermaid))))
-
-(defun etaf-org-preview-typeset-attach (block env)
-  "Return BLOCK carrying the picture already rendered for it in ENV.
-The block gains `:picture', the PNG path, when one exists; the renderer draws
-that and leaves a block without one as its source."
-  (if-let* ((kind (etaf-org-preview-typeset--kind block))
-            (source (plist-get block :text))
-            ((not (string-blank-p source)))
-            ((etaf-org-preview-typeset-available-p))
-            (key (etaf-org-preview-typeset--key kind source env))
-            ((not (gethash key etaf-org-preview-typeset--failed)))
-            (path (etaf-org-preview-typeset--path key))
-            ((file-exists-p path)))
-      (plist-put (copy-sequence block) :picture path)
-    block))
-
-(defun etaf-org-preview-typeset--figure (kind path env)
-  "Return the View of the picture at PATH for KIND in ENV."
-  (let* ((natural (ignore-errors (image-size (create-image path) t)))
-         (pixels (when natural
-                   (cons (/ (float (car natural)) etaf-org-preview-typeset--scale)
-                         (/ (float (cdr natural)) etaf-org-preview-typeset--scale))))
-         (grid (etaf-org-preview--grid-for-pixels env pixels))
-         (image (etaf-node 'image
-                           (list :src path
-                                 :columns (car grid)
-                                 :rows (cdr grid)
-                                 :adapter 'auto)
-                           nil)))
-    (if (eq kind 'math)
-        (etaf-node 'column
-                   (list :width 'stretch :cross-align 'center)
-                   (list image))
-      (etaf-node 'column
-                 (list :width 'stretch :cross-align 'center :item-gap '(lh 0))
-                 (list
-                  (etaf-node 'box
-                             (list :border (list '(px 1) 'solid
-                                                 (etaf-org-preview-typeset--color env :border))
-                                   :on-press (lambda ()
-                                               (etaf-org-preview--act env :open-file path))
-                                   :role 'button :tab-index 0 :pointer 'hand
-                                   :help-echo "mermaid（按 RET 打开）")
-                             (list image))
-                  (etaf-node 'text
-                             (list :color (etaf-org-preview-typeset--color env :muted)
-                                   :font-size (etaf-org-preview--scaled env 0.8))
-                             (list "▲ mermaid")))))))
-
-(defun etaf-org-preview--typeset-figure (kind path env)
-  "Draw the picture at PATH as KIND in ENV."
-  (etaf-org-preview-typeset--figure kind path env))
+(defun etaf-org-preview-typeset--mermaid-font-family ()
+  "Return the font stack a diagram is drawn and measured with.
+The reader's default face comes first, so a diagram uses the type they read
+the page in; the names after it cover the glyphs that face may lack."
+  (let* ((family (ignore-errors (face-attribute 'default :family nil t)))
+         (names (if (and (stringp family)
+                         (not (string-empty-p family))
+                         (not (string= family "default")))
+                    (cons family etaf-org-preview-mermaid-fonts)
+                  etaf-org-preview-mermaid-fonts)))
+    (mapconcat #'identity (delete-dups names) ", ")))
 
 (defun etaf-org-preview-typeset--mermaid-config (env)
-  "Return the mermaid configuration JSON drawn for ENV's page."
+  "Return the mermaid configuration JSON drawn for ENV's page.
+The diagram is built from the page's own colours instead of mermaid's fixed
+`default' and `dark' palettes, so a light page carries light boxes with its own
+ink.  Every diagram kind gets the page's own font and size, because a sequence
+diagram otherwise draws its messages at 12px beside 14px actors and a flowchart
+at another size again."
   (let ((ink (etaf-org-preview-typeset--color env :ink))
         (panel (etaf-org-preview-typeset--color env :panel))
         (panel2 (etaf-org-preview-typeset--color env :panel2))
@@ -194,9 +141,11 @@ that and leaves a block without one as its source."
         (muted (etaf-org-preview-typeset--color env :muted))
         (quote (etaf-org-preview-typeset--color env :quote-bg))
         (page (or (plist-get env :background)
-                  (if (eq (etaf-appearance) 'dark) "#0d1117" "#ffffff"))))
+                  (etaf-org-preview-typeset--color env :bg)))
+        (base (round (etaf-org-preview--base-pixels))))
     (json-encode
-     `((theme . "base")
+     `((look . "classic")
+       (theme . "base")
        (themeVariables
         . ((background . "transparent")
            (primaryColor . ,panel)
@@ -224,11 +173,126 @@ that and leaves a block without one as its source."
            (noteBkgColor . ,quote)
            (noteTextColor . ,ink)
            (noteBorderColor . ,border)
-           (fontFamily . "Helvetica Neue, Helvetica, Arial, sans-serif")
-           (fontSize . ,(format "%dpx" (round (etaf-org-preview--base-pixels))))))
+           (fontFamily . ,(etaf-org-preview-typeset--mermaid-font-family))
+           (fontSize . ,(format "%dpx" base))))
        (flowchart . ((padding . 12) (useMaxWidth . t) (htmlLabels . t)))
        (sequence . ((diagramMarginX . 16) (diagramMarginY . 12)
-                    (actorMargin . 40) (boxMargin . 10)))))))
+                    (actorMargin . 40) (boxMargin . 10)
+                    (actorFontSize . ,base) (messageFontSize . ,base)
+                    (noteFontSize . ,base)))
+       (gantt . ((fontSize . ,base) (sectionFontSize . ,base)))
+       (er . ((fontSize . ,base)))
+       (requirement . ((fontSize . ,base)))
+       (state . ((fontSize . ,base)))))))
+
+(defun etaf-org-preview-typeset--key (kind source env)
+  "Return the cache key of KIND drawn from SOURCE for ENV's surface.
+The key holds what the picture depends on, so a theme, font, cell-height or
+mermaid-configuration change draws a new file instead of reusing the old one."
+  (let ((colors (etaf-org-preview-typeset--colors env)))
+    (secure-hash
+     'sha1
+     (format "%s\n%s\n%s\n%s\n%s"
+             kind source
+             (car colors) (cdr colors)
+             (if (eq kind 'math)
+                 (format "%d/%d"
+                         (etaf-org-preview-typeset--pixels)
+                         (max 1 (or (ignore-errors (frame-char-height)) 16)))
+               (secure-hash 'sha1
+                            (etaf-org-preview-typeset--mermaid-config env)))))))
+
+(defun etaf-org-preview-typeset--path (key)
+  "Return the PNG path of KEY."
+  (expand-file-name (concat key ".png") etaf-org-preview-typeset--cache-directory))
+
+(defun etaf-org-preview-typeset--kind (block)
+  "Return how BLOCK is drawn, or nil when it keeps its source.
+A display formula and a LaTeX environment are math; a `mermaid' source block is
+the diagram language Org users already write as a source block."
+  (pcase (plist-get block :type)
+    ('display-math 'math)
+    ('latex-environment 'math)
+    ('src-block (and (equal (downcase (or (plist-get block :lang) "")) "mermaid")
+                     'mermaid))))
+
+(defun etaf-org-preview-typeset--source (block)
+  "Return the math source of BLOCK that the typesetter can draw.
+An Org LaTeX environment carries its own `\\\\begin{...}' and `\\\\end{...}'.
+KaTeX knows `aligned' but not `equation', and feeding it the wrapper made it
+draw the wrapper as text on top of the formula.  A display-only environment is
+therefore unwrapped, and an `align' environment becomes the `aligned' form
+KaTeX does understand; an environment it already knows stays whole."
+  (let ((text (or (plist-get block :text) "")))
+    (if (not (eq (plist-get block :type) 'latex-environment))
+        text
+      (if (string-match
+           "\\`[ \t]*\\\\begin{\\([^}]+\\)}\\(\\(?:.\\|\n\\)*\\)\\\\end{\\1}[ \t]*\\'"
+           text)
+          (let ((environment (match-string 1 text))
+                (body (match-string 2 text)))
+            (pcase environment
+              ((or "equation" "equation*" "displaymath" "math")
+               body)
+              ((or "align" "align*" "flalign" "flalign*"
+                   "gather" "gather*" "multline" "multline*")
+               (format "\\begin{aligned}%s\\end{aligned}" body))
+              (_ text)))
+        text))))
+
+(defun etaf-org-preview-typeset-attach (block env)
+  "Return BLOCK carrying the picture already rendered for it in ENV.
+The block gains `:picture', the PNG path, when one exists; the renderer draws
+that and leaves a block without one as its source."
+  (if-let* ((kind (etaf-org-preview-typeset--kind block))
+            (source (etaf-org-preview-typeset--source block))
+            ((not (string-blank-p source)))
+            ((etaf-org-preview-typeset-available-p))
+            (key (etaf-org-preview-typeset--key kind source env))
+            ((not (gethash key etaf-org-preview-typeset--failed)))
+            (path (etaf-org-preview-typeset--path key))
+            ((file-exists-p path)))
+      (plist-put (copy-sequence block) :picture path)
+    block))
+
+(defun etaf-org-preview-typeset--figure (kind path env)
+  "Return the View of the picture at PATH for KIND in ENV.
+The picture fills the reading measure instead of the frame: a diagram keeps
+its own aspect ratio and a formula is a line of the text around it."
+  (let* ((width (max 24 (or (plist-get env :width) 92)))
+         (natural (ignore-errors (image-size (create-image path) t)))
+         (pixels (when natural
+                   (cons (/ (car natural) (float etaf-org-preview-typeset--scale))
+                         (/ (cdr natural) (float etaf-org-preview-typeset--scale)))))
+         (grid (etaf-org-preview--media-grid-for-pixels pixels (max 8 (- width 2))))
+         (image (etaf-node 'image
+                           (list :src path
+                                 :columns (car grid)
+                                 :rows (cdr grid)
+                                 :adapter 'auto)
+                           nil))
+         (caption (format "%s（按 RET 打开）"
+                          (file-name-nondirectory path))))
+    (if (eq kind 'math)
+        (etaf-node 'column
+                   (list :width (list 'ch width) :cross-align 'center)
+                   (list image))
+      (etaf-node 'column
+                 (list :width (list 'ch width) :cross-align 'center
+                       :item-gap '(lh 0)
+                       :on-press (lambda ()
+                                   (etaf-org-preview--act env :open-file path))
+                       :role 'button :tab-index 0 :pointer 'hand
+                       :help-echo caption)
+                 (list image
+                       (etaf-node 'text
+                                  (list :color (etaf-org-preview-typeset--color env :muted)
+                                        :font-size (etaf-org-preview--scaled env 0.85))
+                                  (list "▲ mermaid")))))))
+
+(defun etaf-org-preview--typeset-figure (kind path env)
+  "Draw the picture at PATH as KIND in ENV."
+  (etaf-org-preview-typeset--figure kind path env))
 
 (defun etaf-org-preview-typeset--start (key kind source env done)
   "Start rendering SOURCE of KIND for KEY, and return the process."
@@ -248,7 +312,9 @@ that and leaves a block without one as its source."
                      (let ((script (etaf-org-preview-typeset--script)))
                        (unless script (error "No formula renderer in this checkout"))
                        (list "node" script input path (cdr colors)
-                             (number-to-string (etaf-org-preview-typeset--pixels)))))
+                             (number-to-string (etaf-org-preview-typeset--pixels))
+                             (number-to-string
+                              (max 1 (or (ignore-errors (frame-char-height)) 16))))))
                     (_
                      (let ((config (expand-file-name (concat key ".json") directory)))
                        (with-temp-file config
@@ -301,7 +367,7 @@ that and leaves a block without one as its source."
                (plist-get document :section-entries))
        (lambda (block)
          (when-let* ((kind (etaf-org-preview-typeset--kind block))
-                     (source (plist-get block :text))
+                     (source (etaf-org-preview-typeset--source block))
                      ((not (string-blank-p source)))
                      (key (etaf-org-preview-typeset--key kind source env))
                      ((not (gethash key etaf-org-preview-typeset--failed)))

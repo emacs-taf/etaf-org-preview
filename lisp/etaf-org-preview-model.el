@@ -43,15 +43,6 @@ palette, including its page background."
                  (const :tag "Sepia page" sepia))
   :group 'etaf-org-preview)
 
-(defcustom etaf-org-preview-startup 'content
-  "Fold state used when a document does not name one.
-`content' opens every section, `overview' shows the headlines only and
-`folded' keeps every section closed.  A `#+STARTUP:' line wins."
-  :type '(choice (const :tag "Show everything" content)
-                 (const :tag "Headlines only" overview)
-                 (const :tag "Keep everything folded" folded))
-  :group 'etaf-org-preview)
-
 (defcustom etaf-org-preview-width-min 40
   "Narrowest reading measure, in character cells."
   :type 'integer
@@ -64,18 +55,6 @@ palette, including its page background."
 
 (defcustom etaf-org-preview-image-max-height 24
   "Tallest image, in text lines."
-  :type 'integer
-  :group 'etaf-org-preview)
-
-(defcustom etaf-org-preview-expand-limit 4000
-  "Body blocks a global expansion may mount at once.
-A larger document expands only down to the level that fits and says so."
-  :type 'integer
-  :group 'etaf-org-preview)
-
-(defcustom etaf-org-preview-large-document-chars 400000
-  "Document size, in characters, that starts folded.
-A larger document opens as an outline so the first paint stays fast."
   :type 'integer
   :group 'etaf-org-preview)
 
@@ -121,9 +100,7 @@ A larger document opens as an outline so the first paint stays fast."
   "Parse TEXT for SESSION, mapping parse failures onto its own error type."
   (condition-case error
       (etaf-org-preview--parse text
-                               :file (plist-get session :file)
-                               :startup (or (plist-get session :startup)
-                                            etaf-org-preview-startup))
+                               :file (plist-get session :file))
     (error (signal 'etaf-org-preview-error (cdr error)))))
 
 (defun etaf-org-preview--link-file (target dir)
@@ -217,17 +194,8 @@ resolved here."
   document)
 
 ;;; ---------------------------------------------------------------------------
-;;; Fold cells
+;;; Section cells
 ;;; ---------------------------------------------------------------------------
-
-(defun etaf-org-preview--initial-fold-state (_level startup)
-  "Return the initial fold state of a section under STARTUP.
-`overview' shows every headline and no body, which is the cheap first paint
-for a large document; `folded' does the same and is kept for documents that
-ask for it by name."
-  (pcase startup
-    ((or 'overview 'folded) 'folded)
-    (_ 'open)))
 
 (defun etaf-org-preview--walk-sections (sections function)
   "Call FUNCTION on every section in SECTIONS."
@@ -238,21 +206,22 @@ ask for it by name."
 
 (defun etaf-org-preview--build-section-cells (session document)
   "Create or keep SESSION's per-section cells for DOCUMENT.
-A refresh keeps the fold state and the anchor of a section whose id it still
-sees, so a reload never surprises the reader by reopening a subtree."
+A refresh keeps the state and the anchor of a section whose id it still sees,
+so a commented or archived section stays out of the page after a reload."
   (let* ((existing (plist-get session :sections))
-         (startup (plist-get document :startup))
          (cells (make-hash-table :test #'equal)))
     (etaf-org-preview--walk-sections
      (plist-get document :sections)
      (lambda (section)
        (let* ((id (etaf-org-preview-section-id section))
               (old (gethash id existing))
+              ;; The preview has no fold control.  A commented or archived
+              ;; headline still keeps its body out of the reading page; every
+              ;; other section opens, whatever `#+STARTUP' asked for.
               (state (if (or (etaf-org-preview-section-commented section)
                              (etaf-org-preview-section-archived section))
                          'folded
-                       (etaf-org-preview--initial-fold-state
-                        (etaf-org-preview-section-level section) startup))))
+                       'open)))
          (puthash id
                   (list :fold (or (plist-get old :fold)
                                   (etaf-ref state :name 'org-preview-fold)))
@@ -465,17 +434,12 @@ falls back to the file on disk, and a text session keeps its own text."
 
 (defun etaf-org-preview--install (session contents &optional title)
   "Parse CONTENTS and publish it as SESSION's document; return the document.
-The title, the document metadata and the fold cells are refreshed together, so
-the file, a save and an unsaved edit all take the same path.  TITLE overrides
+The title, the document metadata and the section cells are refreshed together,
+so the file, a save and an unsaved edit all take the same path.  TITLE overrides
 the document's own title when given."
   (let* ((document (etaf-org-preview--parse-text contents session))
-         (large (> (length contents) etaf-org-preview-large-document-chars))
-         (document (if large
-                       (plist-put document :startup 'overview)
-                     document))
          (options (plist-get document :options))
          (file (plist-get session :file)))
-    (plist-put session :large large)
     (plist-put session :text (unless file contents))
     (plist-put session :live-text contents)
     (plist-put session :todo-keywords (plist-get document :todo-keywords))
@@ -507,14 +471,12 @@ the document's own title when given."
 ;;; Session
 ;;; ---------------------------------------------------------------------------
 
-(cl-defun etaf-org-preview-create (&key file text title theme startup toc)
+(cl-defun etaf-org-preview-create (&key file text title theme toc)
   "Create a headless preview session and return it.
 FILE names an Org document to read; TEXT supplies the document directly.
 Exactly one source is required.  TITLE overrides the document title.  THEME
-selects a palette and defaults to the value of `etaf-org-preview-theme'.
-STARTUP overrides `etaf-org-preview-startup' when the document names no fold
-state.  TOC overrides the `#+OPTIONS: toc' depth, and nil keeps the document's
-own value."
+selects a palette and defaults to the value of `etaf-org-preview-theme'.  TOC
+overrides the `#+OPTIONS: toc' depth, and nil keeps the document's own value."
   (let* ((file (and file (expand-file-name file)))
          (contents (cond (text text)
                          (file (etaf-org-preview--read-source file))
@@ -537,10 +499,7 @@ own value."
                         :hidden (etaf-ref nil :name 'org-preview-hidden)
                         :toc-visible (etaf-ref t :name 'org-preview-toc)
                         :error (etaf-ref nil :name 'org-preview-error-text)
-                        :startup (or startup etaf-org-preview-startup)
                         :toc toc
-                        :large nil
-                        :global-state 'content
                         :sections (make-hash-table :test #'equal)
                         :published (make-hash-table :test #'equal)
                         :buffer nil)))
@@ -550,7 +509,7 @@ own value."
 (defun etaf-org-preview-state (session)
   "Return SESSION's state as a detached plist snapshot.
 Keys are `:file', `:title', `:author', `:date', `:keywords', `:filetags',
-`:theme', `:background', `:width', `:startup',
+`:theme', `:background', `:width',
 `:buffer', `:outline', `:sections', `:blocks', `:footnotes', `:degraded',
 `:counts' and `:error'."
   (let* ((document (etaf-org-preview--read session :document))
@@ -576,7 +535,6 @@ Keys are `:file', `:title', `:author', `:date', `:keywords', `:filetags',
                                 'palette)
                         'palette)
           :width (etaf-org-preview--read session :width)
-          :startup (plist-get document :startup)
           :buffer (plist-get session :buffer)
           :outline (copy-tree (plist-get document :outline))
           :sections (length (plist-get document :outline))
@@ -941,8 +899,7 @@ every retained block a new environment."
         :todo-keywords (plist-get session :todo-keywords)
         :show-tags (plist-get session :show-tags)
         :toc-depth (plist-get session :toc-depth-base)
-        :modified (plist-get session :modified)
-        :large (plist-get session :large)))
+        :modified (plist-get session :modified)))
 
 (defun etaf-org-preview--build-env (session)
   "Build SESSION's rendering environment from its current inputs."
@@ -959,7 +916,6 @@ every retained block a new environment."
         :fold-ref (lambda (id) (etaf-org-preview--fold-cell session id))
         :fallback-title (etaf-org-preview--read session :title)
         :modified (plist-get session :modified)
-        :large-document (plist-get session :large)
         :actions (list :toggle (lambda (id)
                                  (etaf-org-preview--toggle-fold session id))
                          :locate (lambda (id)

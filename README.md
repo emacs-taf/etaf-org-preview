@@ -3,15 +3,15 @@
 ETAF Org Preview renders an Org document as a modern reading view inside
 Emacs. It draws the document with [ETAF](https://github.com/emacs-taf/etaf)
 components and the [Ebox](https://github.com/emacs-taf/ebox) renderer: a
-centered reading measure, a typographic headline scale, keyword and priority
+centered reading measure, a Markdown-style heading ladder, keyword and priority
 chips, planning lines, tags, nested and description lists, checkboxes,
 tables, source and example blocks, quotes, callouts, images, footnotes and a
 table of contents.
 
-The preview is read-only and fast on large files. Folding is structural: a
-closed section is not rendered at all, so a document opens as an outline and
-unfolds on demand. Every displayed value is a reactive source, so a fold, a
-reload, a width change or a theme change repaints only what it touches.
+The preview is read-only and fast on large files. Every section is rendered in
+place: there is no headline folding and no symbol in front of a heading. Every
+displayed value is a reactive source, so a reload, a width change or a theme
+change repaints only what it touches.
 
 ![The previewer at a wide frame](examples/etaf-org-preview-wide.png)
 
@@ -26,9 +26,12 @@ reload, a width change or a theme change repaints only what it touches.
   citations, macros, targets, links and layout directives. Images honor
   attribute widths, source blocks honor `-n`, and a drawer or logbook keeps its
   text one key away.
-- **Structural folding.** Each headline owns a fold cell: `C-c TAB` cycles
-  folded, children and open; `C-c f` switches between the outline and the full
-  document. A folded subtree is never measured, prepared or mounted.
+- **A heading ladder that reads like Markdown.** Level 1 is twice the body,
+  level 2 is one and a half, level 3 one and a quarter, level 4 a little above
+  the body, and deeper levels keep the body size in muted ink. Levels 1 and 2
+  carry the Markdown rule, every heading keeps one blank line above it, and no
+  level indents. A headline is never a fold button; TODO keywords, tags and
+  planning lines give it the rest of its shape.
 - **A reading view that follows the source.** Saving the Org file, changing it
   from another program, or typing in its buffer without saving repaints the
   preview after the edit settles and keeps the reader in the same section. A
@@ -86,11 +89,9 @@ The preview opens in its own buffer; saving the source repaints it.
 
 | Key | Action |
 | --- | --- |
-| `C-c TAB` | Fold or unfold the section around point |
-| `C-c f` | Switch between the outline and the full document |
 | `C-c n` / `C-c p` | Next / previous headline (`n` also works) |
 | `C-c j` | Choose a headline |
-| `RET` or click | Activate a link, footnote, image; fold a headline |
+| `RET` or click | Activate a link, footnote or image |
 | `C-c C-o` | Activate the link at point |
 | `C-c t` | Show or hide the table of contents |
 | `C-c v` | Show or hide comments, properties and metadata |
@@ -100,8 +101,8 @@ The preview opens in its own buffer; saving the source repaints it.
 | `C-c h` | Show the key bindings |
 | `q` | Close the preview |
 
-`TAB`, `S-TAB`, `?` and the scroll keys belong to the framework, which is why
-folding uses `C-c TAB` and the outline switch uses `C-c f`.
+`TAB`, `S-TAB`, `?` and the scroll keys belong to the framework; headline
+navigation stays on `n`, `C-c n` and `C-c p`.
 
 ## Scripting
 
@@ -113,8 +114,6 @@ headlessly:
        (buffer (etaf-mount (generate-new-buffer " *org*")
                            (etaf-org-preview-view session)
                            '(:viewport-width 900 :viewport-height 50))))
-  (etaf-org-preview-fold session (nth 2 (car (etaf-org-preview-outline session)))
-                        'folded)
   (etaf-org-preview-state session))
 ```
 
@@ -124,8 +123,8 @@ The root entry's Commentary lists every supported function and variable.
 
 - [User manual](docs/manual.md): workflows, syntax coverage, links, display
   controls, degraded content and recovery.
-- [Architecture](docs/architecture.md): modules, data flow, folding, media
-  resolution, theming and the measured performance baseline.
+- [Architecture](docs/architecture.md): modules, data flow, media resolution,
+  theming and the measured performance baseline.
 - [Changelog](CHANGELOG.md).
 
 ## Development
@@ -134,7 +133,7 @@ The root entry's Commentary lists every supported function and variable.
 make compile          # byte-compile with warnings as errors
 make test             # public behavior scenarios (tests/acceptance.json)
 make check            # structure, compile, acceptance and API boundary gates
-make benchmark        # parse, mount, fold and refresh timings
+make benchmark        # parse, mount, edit and refresh timings
 ```
 
 `examples/sample.org` is the maintained document every surface should still

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+
+- Headlines use the shared Markdown type ladder: level 1 is twice the body,
+  level 2 one and a half, level 3 one and a quarter, level 4 a little above the
+  body, and deeper levels keep the body size in muted ink. Levels 1 and 2 carry
+  the Markdown rule and every heading keeps one blank line above it; no level
+  indents.
+- A headline is no longer a fold control. The chevron, `C-c TAB`, `C-c f` and
+  the initial `#+STARTUP:` fold state are gone; every ordinary section is
+  rendered in place. `COMMENT` and `:ARCHIVE:`
+  bodies remain out of the reading page, with their markers visible.
+- Lists are tighter: the marker column is only as wide as the widest mark plus
+  one cell, a checkbox has its own cell, nested lists start at the parent's
+  text column, and description terms sit on their own line above a quiet rule.
+- Tables use one compact body row with a header tint, a header rule, hairline
+  column rules and explicit `|---` rules. The outer frame and the rules between
+  body rows are gone.
+
+### Fixed
+
+- A LaTeX environment is unwrapped before KaTeX sees it, so `equation`,
+  `aligned` and `align` no longer draw their own `\begin`/`\end` text on top of
+  the formula.
+- Mermaid uses the reader's first font with a CJK fallback stack and one font
+  size across diagram kinds, instead of fixed 12px labels beside 14px actors.
+- An inline `src_LANG{...}` snippet renders its code instead of its marker.
+
 ## 0.2.2
 
 ### Fixed

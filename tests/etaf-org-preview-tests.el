@@ -217,17 +217,16 @@
         (should-not (string-match-p "父正文" text))
         (should-not (string-match-p "子正文" text))))))
 
-(ert-deftest etaf-org-preview-tests-overview-startup-shows-headlines-only ()
-  "An overview start hides every body and keeps every headline visible."
+(ert-deftest etaf-org-preview-tests-sections-open-by-default ()
+  "Every ordinary section body is rendered in the reader."
   (let ((session (etaf-org-preview-create
-                  :text "* 一节\n一节正文\n* 二节\n二节正文\n"
-                  :startup 'overview)))
+                  :text "* 一节\n一节正文\n* 二节\n二节正文\n")))
     (etaf-org-preview-tests--with-mount session
       (let ((text (etaf-org-preview-tests--text)))
         (should (string-match-p "一节" text))
         (should (string-match-p "二节" text))
-        (should-not (string-match-p "一节正文" text))
-        (should-not (string-match-p "二节正文" text))))))
+        (should (string-match-p "一节正文" text))
+        (should (string-match-p "二节正文" text))))))
 
 (ert-deftest etaf-org-preview-tests-fold-all-updates-every-section ()
   "A global fold writes every section and reports their state."
