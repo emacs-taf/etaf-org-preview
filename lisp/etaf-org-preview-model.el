@@ -336,6 +336,174 @@ view.  Both writes go through one batch so the document repaints once."
     found))
 
 ;;; ---------------------------------------------------------------------------
+;;; Published entries
+;;; ---------------------------------------------------------------------------
+
+(defun etaf-org-preview--digest (value)
+  "Return a stable digest of VALUE for packaging entries."
+  (let ((print-circle t)
+        (print-length nil)
+        (print-level nil))
+    (secure-hash 'sha1 (prin1-to-string value))))
+
+(defun etaf-org-preview--block-entry (session block published table counts)
+  "Return the published entry of BLOCK and record it in TABLE.
+PUBLISHED maps the previous publish's keys to entries.  An unchanged block
+returns its old entry, so its Component call, hosts and focus stay; COUNTS
+keeps two identical blocks in one document distinct."
+  (when (fboundp 'etaf-org-preview-typeset-attach)
+    (setq block (etaf-org-preview-typeset-attach
+                 block (etaf-org-preview--env session))))
+  (let* ((digest (concat "b:" (etaf-org-preview--digest block)))
+         (occurrence (1+ (gethash digest counts 0)))
+         (key (if (= 1 occurrence) digest (format "%s#%d" digest occurrence)))
+         (entry (or (gethash key published)
+                    (list :key key :block block
+                          :view (etaf-node 'etaf-org-preview-block
+                                           (list :key key :session session :block block)
+                                           nil)))))
+    (puthash digest occurrence counts)
+    (puthash key entry table)
+    entry))
+
+(defun etaf-org-preview--section-entry (session section published table counts)
+  "Return the published entry of SECTION and record it in TABLE.
+The key covers the heading, its drawers and the keys of every body block and
+child section, so an unchanged subtree keeps its Component call while an edit
+rebuilds only the sections on its path."
+  (let* ((body (mapcar (lambda (block)
+                         (etaf-org-preview--block-entry
+                          session block published table counts))
+                       (cl-remove-if
+                        (lambda (block)
+                          (eq (plist-get block :type) 'footnote-def))
+                        (etaf-org-preview-section-body section))))
+         (children (mapcar (lambda (child)
+                             (etaf-org-preview--section-entry
+                              session child published table counts))
+                           (etaf-org-preview-section-children section)))
+         (id (etaf-org-preview-section-id section))
+         (fold (etaf-org-preview--fold-cell session id))
+         (digest (etaf-org-preview--digest
+                  (list id
+                        (etaf-org-preview-section-level section)
+                        (etaf-org-preview-section-todo section)
+                        (etaf-org-preview-section-priority section)
+                        (etaf-org-preview-section-title section)
+                        (etaf-org-preview-section-title-inlines section)
+                        (etaf-org-preview-section-tags section)
+                        (etaf-org-preview-section-planning section)
+                        (etaf-org-preview-section-properties section)
+                        (etaf-org-preview-section-logbook section)
+                        (etaf-org-preview-section-logbook-text section)
+                        (etaf-org-preview-section-archived section)
+                        (etaf-org-preview-section-commented section)
+                        (mapcar (lambda (entry) (plist-get entry :key)) body)
+                        (mapcar (lambda (entry) (plist-get entry :key)) children))))
+         (key (concat "s:" digest))
+         (old (gethash key published))
+         (entry (if (and old (eq (plist-get old :fold) fold))
+                    old
+                  (list :key key :fold fold :section section :body body :children children
+                        :view (etaf-node 'etaf-org-preview-section
+                                         (list :key key
+                                               :section section
+                                               :session session
+                                               :fold fold
+                                               :body (mapcar (lambda (item)
+                                                               (plist-get item :view))
+                                                             body)
+                                               :children (mapcar (lambda (item)
+                                                                   (plist-get item :view))
+                                                                 children))
+                                         nil)))))
+    (puthash key entry table)
+    entry))
+
+(defun etaf-org-preview--keyed-document (session document)
+  "Return DOCUMENT with its preamble and headline tree replaced by entries.
+Every entry carries the Component call it renders, so publishing a document
+whose parts did not change hands the runtime the same calls and only the edited
+part paints."
+  (let* ((published (plist-get session :published))
+         (table (make-hash-table :test #'equal))
+         (counts (make-hash-table :test #'equal))
+         (preamble (mapcar (lambda (block)
+                             (etaf-org-preview--block-entry
+                              session block published table counts))
+                           (plist-get document :preamble)))
+         (sections (mapcar (lambda (section)
+                             (etaf-org-preview--section-entry
+                              session section published table counts))
+                           (plist-get document :sections))))
+    (plist-put session :published table)
+    (plist-put document :preamble-entries preamble)
+    (plist-put document :section-entries sections)))
+
+(defun etaf-org-preview--current-text (session)
+  "Return the text SESSION currently shows, preferring its source buffer.
+An unsaved edit is what the page follows; a file the buffer no longer visits
+falls back to the file on disk, and a text session keeps its own text."
+  (let* ((buffer (plist-get session :source-buffer))
+         (file (plist-get session :file))
+         (visiting (and (buffer-live-p buffer)
+                        (buffer-local-value 'buffer-file-name buffer)
+                        (equal (expand-file-name
+                                (buffer-local-value 'buffer-file-name buffer))
+                               file))))
+    (cond
+     ;; An unsaved edit is what the page follows.
+     ((and visiting (buffer-modified-p buffer))
+      (with-current-buffer buffer
+        (buffer-substring-no-properties (point-min) (point-max))))
+     ;; Otherwise read the file, so a change written by another program shows.
+     (file (etaf-org-preview--read-source file))
+     ((buffer-live-p buffer)
+      (with-current-buffer buffer
+        (buffer-substring-no-properties (point-min) (point-max))))
+     (t (or (plist-get session :text) "")))))
+
+(defun etaf-org-preview--install (session contents &optional title)
+  "Parse CONTENTS and publish it as SESSION's document; return the document.
+The title, the document metadata and the fold cells are refreshed together, so
+the file, a save and an unsaved edit all take the same path.  TITLE overrides
+the document's own title when given."
+  (let* ((document (etaf-org-preview--parse-text contents session))
+         (large (> (length contents) etaf-org-preview-large-document-chars))
+         (document (if large
+                       (plist-put document :startup 'overview)
+                     document))
+         (options (plist-get document :options))
+         (file (plist-get session :file)))
+    (plist-put session :large large)
+    (plist-put session :text (unless file contents))
+    (plist-put session :live-text contents)
+    (plist-put session :todo-keywords (plist-get document :todo-keywords))
+    (plist-put session :show-tags (plist-get options :tags))
+    (plist-put session :toc-depth-base
+               (or (plist-get session :toc) (plist-get options :toc)))
+    (plist-put session :modified
+               (when (and file (file-exists-p file))
+                 (format-time-string "更新于 %Y-%m-%d %H:%M"
+                                     (file-attribute-modification-time
+                                      (file-attributes file)))))
+    (plist-put session :env-cache nil)
+    (etaf-org-preview--build-section-cells session document)
+    (let ((document (etaf-org-preview--keyed-document
+                     session
+                     (etaf-org-preview--resolve-media document session))))
+      (etaf-batch
+        (etaf-set-value (etaf-org-preview--ref session :document) document)
+        (etaf-set-value (etaf-org-preview--ref session :title)
+                        (or title (plist-get document :title)
+                            (and file (file-name-base file))
+                            "Org 文档"))
+        (etaf-set-value (etaf-org-preview--ref session :error) nil))
+      (when (fboundp 'etaf-org-preview-typeset-request)
+        (etaf-org-preview-typeset-request session))
+      document)))
+
+;;; ---------------------------------------------------------------------------
 ;;; Session
 ;;; ---------------------------------------------------------------------------
 
@@ -343,9 +511,10 @@ view.  Both writes go through one batch so the document repaints once."
   "Create a headless preview session and return it.
 FILE names an Org document to read; TEXT supplies the document directly.
 Exactly one source is required.  TITLE overrides the document title.  THEME
-selects a palette and defaults to `etaf-org-preview-theme'.  STARTUP overrides
-`etaf-org-preview-startup' when the document names no fold state.  TOC
-overrides the `#+OPTIONS: toc' depth, and nil keeps the document's own value."
+selects a palette and defaults to the value of `etaf-org-preview-theme'.
+STARTUP overrides `etaf-org-preview-startup' when the document names no fold
+state.  TOC overrides the `#+OPTIONS: toc' depth, and nil keeps the document's
+own value."
   (let* ((file (and file (expand-file-name file)))
          (contents (cond (text text)
                          (file (etaf-org-preview--read-source file))
@@ -353,12 +522,12 @@ overrides the `#+OPTIONS: toc' depth, and nil keeps the document's own value."
                                     '("etaf-org-preview-create needs :file or :text")))))
          (requested (or theme etaf-org-preview-theme))
          (auto (eq requested 'auto))
-         (large (> (length contents) etaf-org-preview-large-document-chars))
          (session (list :file file
                         :text (unless file contents)
+                        :live-text contents
                         :dir (if file (file-name-directory file) default-directory)
-                        :title (etaf-ref (or title "")
-                                         :name 'org-preview-title)
+                        :document (etaf-ref nil :name 'org-preview-document)
+                        :title (etaf-ref (or title "") :name 'org-preview-title)
                         :theme-mode (etaf-ref requested :name 'org-preview-theme-mode)
                         :theme-source (etaf-ref (if auto 'frame 'palette)
                                                 :name 'org-preview-theme-source)
@@ -370,22 +539,12 @@ overrides the `#+OPTIONS: toc' depth, and nil keeps the document's own value."
                         :error (etaf-ref nil :name 'org-preview-error-text)
                         :startup (or startup etaf-org-preview-startup)
                         :toc toc
-                        :large large
+                        :large nil
                         :global-state 'content
                         :sections (make-hash-table :test #'equal)
-                        :buffer nil))
-         (document (etaf-org-preview--parse-text contents session))
-         (document (if large
-                       (plist-put document :startup 'overview)
-                     document)))
-    (plist-put session :document
-               (etaf-ref (etaf-org-preview--resolve-media document session)
-                         :name 'org-preview-document))
-    (etaf-set-value (etaf-org-preview--ref session :title)
-                    (or title (plist-get document :title)
-                        (and file (file-name-base file))
-                        "Org 文档"))
-    (etaf-org-preview--build-section-cells session document)
+                        :published (make-hash-table :test #'equal)
+                        :buffer nil)))
+    (etaf-org-preview--install session contents title)
     session))
 
 (defun etaf-org-preview-state (session)
@@ -429,28 +588,24 @@ Keys are `:file', `:title', `:author', `:date', `:keywords', `:filetags',
           :counts counts
           :error (etaf-org-preview--read session :error))))
 
+(defun etaf-org-preview--republish (session)
+  "Publish SESSION's current source again and return SESSION.
+A palette change repaints pictures drawn for the old colours, so the document
+is installed again; unchanged blocks keep their entry and do not repaint."
+  (when (or (plist-get session :buffer)
+            (plist-get session :file))
+    (etaf-org-preview--install session
+                               (etaf-org-preview--current-text session)))
+  session)
+
 (defun etaf-org-preview-refresh (session)
   "Re-read and re-parse SESSION's document and return SESSION.
 A read failure signals `etaf-org-preview-error' and leaves the published
 document untouched.  Fold state and reading anchors survive for every section
-whose id is still present."
-  (let* ((file (plist-get session :file))
-         (contents (if file
-                       (etaf-org-preview--read-source file)
-                     (or (plist-get session :text) "")))
-         (document (etaf-org-preview--parse-text contents session)))
-    (when (> (length contents) etaf-org-preview-large-document-chars)
-      (plist-put session :large t))
-    (etaf-org-preview--build-section-cells session document)
-    (etaf-batch
-      (etaf-set-value (etaf-org-preview--ref session :document)
-                      (etaf-org-preview--resolve-media document session))
-      (etaf-set-value (etaf-org-preview--ref session :title)
-                      (or (plist-get document :title)
-                          (and file (file-name-base file))
-                          "Org 文档"))
-      (etaf-set-value (etaf-org-preview--ref session :error) nil))
-    session))
+whose id is still present.  An unsaved source buffer is read as it stands, so
+the command never shows the page reverting to the file."
+  (etaf-org-preview--install session (etaf-org-preview--current-text session))
+  session)
 
 (defun etaf-org-preview-set-theme (session theme)
   "Show SESSION with palette THEME and return SESSION.
@@ -467,6 +622,7 @@ THEME is `auto' or one of the fixed palettes; anything else signals
                                theme))
     (etaf-org-preview--write session :theme-source
                              (if (eq theme 'auto) 'frame 'palette)))
+  (etaf-org-preview--republish session)
   session)
 
 (defun etaf-org-preview-cycle-theme (session)
@@ -765,36 +921,47 @@ search suffix opens the target and reveals the heading it names."
 
 (defun etaf-org-preview--toc-depth (session)
   "Return SESSION's table of contents depth, or nil when hidden."
-  (let* ((document (etaf-org-preview--read session :document))
-         (options (plist-get document :options))
-         (depth (or (plist-get session :toc)
-                    (plist-get options :toc))))
+  (let ((depth (plist-get session :toc-depth-base)))
     (when (and depth (etaf-org-preview--read session :toc-visible))
       depth)))
 
-(defun etaf-org-preview--env (session)
-  "Return the rendering environment plist for SESSION."
-  (let* ((document (etaf-org-preview--read session :document))
-         (options (plist-get document :options))
-         (file (plist-get session :file)))
-    (list :palette (etaf-org-preview--session-palette session)
-          :width (etaf-org-preview--read session :width)
-          :background (etaf-org-preview--page-background session)
-          :base-pixels (etaf-org-preview--base-pixels)
-          :image-max-rows etaf-org-preview-image-max-height
-          :todo-keywords (plist-get document :todo-keywords)
-          :show-tags (plist-get options :tags)
-          :toc-depth (etaf-org-preview--toc-depth session)
-          :hidden-ref (etaf-org-preview--ref session :hidden)
-          :fold-ref (lambda (id) (etaf-org-preview--fold-cell session id))
-          :fallback-title (etaf-org-preview--read session :title)
-          :modified (when (and file (file-exists-p file))
-                      (format-time-string "更新于 %Y-%m-%d %H:%M"
-                                          (file-attribute-modification-time
-                                           (file-attributes file))))
-          :large-document (plist-get session :large)
-          :actions (list :toggle (lambda (id)
-                                   (etaf-org-preview--toggle-fold session id))
+(defun etaf-org-preview--env-inputs (session)
+  "Return the values SESSION's rendering environment is built from.
+Reading them is what makes a block follow a palette, width, hidden-content or
+title change; the document itself is not here, so publishing it does not hand
+every retained block a new environment."
+  (list :theme (etaf-org-preview--read session :theme)
+        :theme-source (etaf-org-preview--read session :theme-source)
+        :appearance (etaf-appearance)
+        :frame (etaf-org-preview--display-frame session)
+        :width (etaf-org-preview--read session :width)
+        :hidden (etaf-org-preview--read session :hidden)
+        :toc-visible (etaf-org-preview--read session :toc-visible)
+        :title (etaf-org-preview--read session :title)
+        :todo-keywords (plist-get session :todo-keywords)
+        :show-tags (plist-get session :show-tags)
+        :toc-depth (plist-get session :toc-depth-base)
+        :modified (plist-get session :modified)
+        :large (plist-get session :large)))
+
+(defun etaf-org-preview--build-env (session)
+  "Build SESSION's rendering environment from its current inputs."
+  (list :palette (etaf-org-preview--session-palette session)
+        :width (etaf-org-preview--read session :width)
+        :background (etaf-org-preview--page-background session)
+        :base-pixels (etaf-org-preview--base-pixels)
+        :image-max-rows etaf-org-preview-image-max-height
+        :todo-keywords (plist-get session :todo-keywords)
+        :show-tags (plist-get session :show-tags)
+        :toc-depth (etaf-org-preview--toc-depth session)
+        :hidden (etaf-org-preview--read session :hidden)
+        :hidden-ref (etaf-org-preview--ref session :hidden)
+        :fold-ref (lambda (id) (etaf-org-preview--fold-cell session id))
+        :fallback-title (etaf-org-preview--read session :title)
+        :modified (plist-get session :modified)
+        :large-document (plist-get session :large)
+        :actions (list :toggle (lambda (id)
+                                 (etaf-org-preview--toggle-fold session id))
                          :locate (lambda (id)
                                    (etaf-org-preview--reveal id session)
                                    (etaf-org-preview--locate-id session id))
@@ -806,10 +973,22 @@ search suffix opens the target and reveals the heading it names."
                                      (etaf-org-preview--jump-footnote session label))
                          :target (lambda (name)
                                    (etaf-org-preview--jump-target session name))
-                         :hidden (lambda ()
-                                   (etaf-org-preview-show-hidden
-                                    session
-                                    (not (etaf-org-preview--read session :hidden))))))))
+                       :hidden (lambda ()
+                                 (etaf-org-preview-show-hidden
+                                  session
+                                  (not (etaf-org-preview--read session :hidden)))))))
+
+(defun etaf-org-preview--env (session)
+  "Return SESSION's rendering environment, reused until one of its inputs changes.
+A block Component reads this plist in its own render, so a palette, width or
+hidden-content change reaches it without a document publish."
+  (let ((inputs (etaf-org-preview--env-inputs session)))
+    (let ((cached (plist-get session :env-cache)))
+      (if (equal (car cached) inputs)
+          (cdr cached)
+        (let ((env (etaf-org-preview--build-env session)))
+          (plist-put session :env-cache (cons inputs env))
+          env)))))
 
 (defun etaf-org-preview--jump-target (session name)
   "Move point to SESSION's target NAME and recenter.
@@ -851,6 +1030,77 @@ folded and open."
 
 (defvar etaf-org-preview--follow-timers (make-hash-table :test #'equal)
   "Pending repaints by absolute source file name.")
+
+;;; ---------------------------------------------------------------------------
+;;; Following the source buffer
+;;; ---------------------------------------------------------------------------
+
+(defconst etaf-org-preview--live-delay 0.3
+  "Seconds of quiet before an unsaved edit repaints its preview.")
+
+(defun etaf-org-preview--live-schedule (session)
+  "Schedule SESSION to repaint from its source buffer after the typing pauses."
+  (when-let* ((old (plist-get session :live-timer)))
+    (cancel-timer old))
+  (plist-put session :live-timer
+             (run-with-timer
+              etaf-org-preview--live-delay nil
+              (lambda ()
+                (plist-put session :live-timer nil)
+                (etaf-org-preview--live-flush session)))))
+
+(defun etaf-org-preview--live-flush (session)
+  "Repaint SESSION from its source buffer, or from its file after that closes."
+  (let* ((buffer (plist-get session :source-buffer))
+         (text (if (buffer-live-p buffer)
+                   (with-current-buffer buffer
+                     (buffer-substring-no-properties (point-min) (point-max)))
+                 (etaf-org-preview--current-text session))))
+    (unless (equal text (plist-get session :live-text))
+      (condition-case error
+          (etaf-org-preview--install session text)
+        (error
+         (message "Org preview kept its last render: %s"
+                  (error-message-string error)))))))
+
+(defun etaf-org-preview--live-changed (&rest _)
+  "Schedule the source session of the current buffer to repaint."
+  (when-let* ((session (plist-get (buffer-local-value 'etaf-org-preview--live-state
+                                                      (current-buffer))
+                                  :session)))
+    (etaf-org-preview--live-schedule session)))
+
+(defvar-local etaf-org-preview--live-state nil
+  "The preview following this buffer, as a plist with its SESSION.")
+
+(defun etaf-org-preview--live-register (session buffer)
+  "Make SESSION follow unsaved edits in BUFFER."
+  (when (buffer-live-p buffer)
+    (etaf-org-preview--live-unregister session)
+    (plist-put session :source-buffer buffer)
+    (with-current-buffer buffer
+      (setq-local etaf-org-preview--live-state (list :session session))
+      (add-hook 'after-change-functions #'etaf-org-preview--live-changed nil t)
+      (add-hook 'kill-buffer-hook
+                (lambda ()
+                  (plist-put session :source-buffer nil)
+                  (etaf-org-preview--live-schedule session))
+                nil t))
+    (plist-put session :live-text
+               (with-current-buffer buffer
+                 (buffer-substring-no-properties (point-min) (point-max))))))
+
+(defun etaf-org-preview--live-unregister (session)
+  "Stop SESSION from following its source buffer."
+  (let ((buffer (plist-get session :source-buffer)))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (remove-hook 'after-change-functions #'etaf-org-preview--live-changed t)
+        (kill-local-variable 'etaf-org-preview--live-state)))
+    (when-let* ((timer (plist-get session :live-timer)))
+      (cancel-timer timer))
+    (plist-put session :live-timer nil)
+    (plist-put session :source-buffer nil)))
 
 (defun etaf-org-preview--follow-saved ()
   "Repaint the preview of the file being saved, when one is open."

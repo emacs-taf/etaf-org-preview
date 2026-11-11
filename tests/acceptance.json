@@ -219,6 +219,16 @@
       "name": "etaf-org-preview-tests-src-line-numbers-follow-the-n-switch",
       "file": "tests/etaf-org-preview-tests.el",
       "purpose": "A source block with the -n switch numbers its lines from the requested start in a gutter."
+    },
+    {
+      "name": "etaf-org-preview-tests-typeset-disabled-keeps-the-formula-source",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "Disabling drawing leaves a display formula as readable source instead of removing it."
+    },
+    {
+      "name": "etaf-org-preview-tests-live-edit-follows-the-unsaved-buffer",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "An unsaved edit in the source buffer repaints the preview, so a preview can sit beside editing."
     }
   ]
 }

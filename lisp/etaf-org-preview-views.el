@@ -24,6 +24,8 @@
 (require 'etaf)
 (require 'etaf-ui)
 (require 'etaf-org-preview-theme)
+(declare-function etaf-org-preview--env "etaf-org-preview-model" (session))
+(declare-function etaf-org-preview--typeset-figure "etaf-org-preview-typeset" (kind path env))
 
 (defconst etaf-org-preview--measure-gutter 2
   "Character cells kept blank on each side of the reading measure.")
@@ -428,6 +430,7 @@ dimensions fit, first the reading measure and then the row budget."
                      (etaf-node 'image
                                 (list :src path
                                       :columns (car grid) :rows (cdr grid)
+                                      :adapter 'auto
                                       :role 'button :tab-index 0 :pointer 'hand
                                       :on-press (lambda ()
                                                   (etaf-org-preview--act
@@ -889,7 +892,12 @@ drawer text is ever silently dropped."
          (etaf-org-preview--runs-box (plist-get block :inlines) env)))
       ('list (etaf-org-preview--list-view block env))
       ('table (etaf-org-preview--table-view block env))
-      ('src-block (etaf-org-preview--code-block-view block env))
+      ('src-block
+       (if (and (equal (downcase (or (plist-get block :lang) "")) "mermaid")
+                (plist-get block :picture))
+           (etaf-org-preview--typeset-figure 'mermaid
+                                             (plist-get block :picture) env)
+         (etaf-org-preview--code-block-view block env)))
       ('example-block (etaf-org-preview--code-block-view block env))
       ('results (etaf-org-preview--code-block-view block env "结果"))
       ('fixed-width
@@ -943,29 +951,33 @@ drawer text is ever silently dropped."
                     (list (format "#+%s: %s" (plist-get block :key)
                                   (plist-get block :value))))))
       ('horizontal-rule (etaf-org-preview--rule env 0.75))
-      ('display-math
-       (etaf-node 'box
-                  (list :width 'stretch
-                        :background-color (etaf-org-preview--color env :panel)
-                        :padding '((lh 1) (ch 2))
-                        :text-align 'center)
-                  (list (etaf-node 'text
-                                   (list :color (etaf-org-preview--color env :ink)
-                                         :font-family (etaf-org-preview--mono)
-                                         :font-style 'italic)
-                                   (list (or (plist-get block :text) ""))))))
       ('latex-environment
-       (etaf-node 'box
-                  (list :width 'stretch
-                        :background-color (etaf-org-preview--color env :panel)
-                        :border (list '(px 1) 'solid
-                                      (etaf-org-preview--color env :border))
-                        :padding '((lh 1) (ch 2))
-                        :wrap-mode 'char)
-                  (list (etaf-node 'text
-                                   (list :color (etaf-org-preview--color env :muted)
-                                         :font-family (etaf-org-preview--mono))
-                                   (list (or (plist-get block :text) ""))))))
+       (or (when-let* ((picture (plist-get block :picture)))
+             (etaf-org-preview--typeset-figure 'math picture env))
+           (etaf-node 'box
+                      (list :width 'stretch
+                            :background-color (etaf-org-preview--color env :panel)
+                            :border (list '(px 1) 'solid
+                                          (etaf-org-preview--color env :border))
+                            :padding '((lh 1) (ch 2))
+                            :wrap-mode 'char)
+                      (list (etaf-node 'text
+                                       (list :color (etaf-org-preview--color env :muted)
+                                             :font-family (etaf-org-preview--mono))
+                                       (list (or (plist-get block :text) "")))))))
+      ('display-math
+       (or (when-let* ((picture (plist-get block :picture)))
+             (etaf-org-preview--typeset-figure 'math picture env))
+           (etaf-node 'box
+                      (list :width 'stretch
+                            :background-color (etaf-org-preview--color env :panel)
+                            :padding '((lh 1) (ch 2))
+                            :text-align 'center)
+                      (list (etaf-node 'text
+                                       (list :color (etaf-org-preview--color env :ink)
+                                             :font-family (etaf-org-preview--mono)
+                                             :font-style 'italic)
+                                       (list (or (plist-get block :text) "")))))))
       ((or 'dynamic-block 'babel-call)
        (etaf-node 'box
                   (list :width 'stretch
@@ -1251,24 +1263,26 @@ The row is the fold affordance: pressing it cycles the section."
                        (when (<= level 2)
                          (list (etaf-org-preview--rule env 0.3)))))))
 
-(defun etaf-org-preview--section-body-views (section env)
-  "Return the body Views of SECTION in ENV."
-  (etaf-org-preview--block-views (etaf-org-preview-section-body section) env))
+(etaf-define-component etaf-org-preview-block (&key session block)
+  "Render one published body BLOCK of SESSION.
+The Component owns one block, so a publish that changes another block leaves
+this block's instance and output alone."
+  :render
+  (etaf-org-preview--block-view block (etaf-org-preview--env session)))
 
-(etaf-define-component etaf-org-preview-section (&key section fold hidden env)
+(etaf-define-component etaf-org-preview-section
+    (&key section fold session body children)
   "Render one headline SECTION with its own fold cell.
 FOLD is the section's fold ref, read here so a fold repaints this section only.
-HIDDEN reveals comments, properties and archives.  A parent in the `children'
-state renders its children through their own cells; entering that state folds
-them in one batch, so their bodies stay hidden until a reader opens one."
+BODY and CHILDREN are the published Component calls of its body and subtree, so
+an unchanged block keeps its instance and a changed one is the only block that
+paints.  A parent in the `children' state renders its children through those
+calls; entering that state folds them in one batch."
   :render
-  (let* ((state (etaf-value fold))
+  (let* ((env (etaf-org-preview--env session))
+         (state (etaf-value fold))
          (open (eq state 'open))
-         (hidden-value (etaf-value hidden))
-         (children (and (not (eq state 'folded))
-                        (etaf-org-preview-section-children section)))
-         (env (plist-put (copy-sequence (etaf-current-prop :env))
-                         :hidden hidden-value))
+         (hidden (plist-get env :hidden))
          (views nil))
     (setq views (list (etaf-org-preview--heading-view section state env)))
     (when-let* ((planning (etaf-org-preview-section-planning section)))
@@ -1276,28 +1290,21 @@ them in one batch, so their bodies stay hidden until a reader opens one."
         (push (etaf-org-preview--planning-view planning env) views)))
     (when (not (eq state 'folded))
       (when-let* ((chip (etaf-org-preview--properties-chip
-                         section env hidden-value)))
+                         section env hidden)))
         (push chip views))
       (when-let* ((chip (etaf-org-preview--logbook-chip
-                         section env hidden-value)))
+                         section env hidden)))
         (push chip views)))
     (when open
-      (when-let* ((body (etaf-org-preview--section-body-views section env)))
+      (when body
         (push (etaf-node 'column
                          (list :width 'stretch :item-gap '(lh 1)
                                :padding-top '(lh 0.5))
                          body)
               views)))
-    (dolist (child children)
-      (push (etaf-node 'etaf-org-preview-section
-                       (list :key (etaf-org-preview-section-id child)
-                             :section child
-                             :fold (etaf-org-preview--fold-ref env
-                                                               (etaf-org-preview-section-id child))
-                             :hidden hidden
-                             :env env)
-                       nil)
-            views))
+    (when (and children (not (eq state 'folded)))
+      (dolist (child children)
+        (push child views)))
     (etaf-node 'column
                (list :width 'stretch :item-gap '(lh 0))
                (nreverse views))))
@@ -1497,14 +1504,16 @@ The column is centered and capped by ENV's `:width'; a narrow window fills down
 to the gutter on both sides.  Sections are Components, so a fold only repaints
 the section it changes."
   (let* ((width (max 24 (or (plist-get env :width) 92)))
-         (hidden (etaf-value (plist-get env :hidden-ref)))
-         (env (plist-put (copy-sequence env) :hidden hidden))
          (gutter etaf-org-preview--measure-gutter)
          (background (plist-get env :background))
-         (sections (plist-get document :sections))
-         (preamble (cl-remove-if (lambda (block)
-                                   (eq (plist-get block :type) 'keyword))
-                                 (plist-get document :preamble))))
+         (sections (plist-get document :section-entries))
+         ;; Metadata keywords and footnote definitions are not page blocks:
+         ;; the title block and the footnote list already show them.
+         (preamble (cl-remove-if
+                    (lambda (entry)
+                      (memq (plist-get (plist-get entry :block) :type)
+                            '(keyword footnote-def)))
+                    (plist-get document :preamble-entries))))
     (etaf-node 'column
                (append (list :width '(vw 100) :cross-align 'center
                              :aria-label "Org 预览")
@@ -1524,20 +1533,11 @@ the section it changes."
                                   (etaf-node 'column
                                              (list :width 'stretch
                                                    :item-gap '(lh 1))
-                                             (etaf-org-preview--block-views
-                                              preamble env)))
-                            (mapcar
-                             (lambda (section)
-                               (etaf-node 'etaf-org-preview-section
-                                          (list :key (etaf-org-preview-section-id section)
-                                                :section section
-                                                :fold (etaf-org-preview--fold-ref
-                                                       env
-                                                       (etaf-org-preview-section-id section))
-                                                :hidden (plist-get env :hidden-ref)
-                                                :env env)
-                                          nil))
-                             sections)
+                                             (mapcar (lambda (entry)
+                                                       (plist-get entry :view))
+                                                     preamble)))
+                            (mapcar (lambda (entry) (plist-get entry :view))
+                                    sections)
                             (list (etaf-org-preview--footnotes-view document env))))))))
 
 (provide 'etaf-org-preview-views)

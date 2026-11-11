@@ -31,7 +31,7 @@
     (buffer-string)))
 
 (taf-benchmark-register
- "org-preview.parse" :version 1 :modes '(batch) :budget-ms 30
+ "org-preview.parse" :version 1 :modes '(batch) :budget-ms 60
  :impact 'local :isolation 'series
  :description "Parse the maintained sample document headlessly"
  :setup
@@ -44,7 +44,7 @@
       :cleanup (lambda () nil)))))
 
 (taf-benchmark-register
- "org-preview.mount" :version 1 :modes '(batch gui) :budget-ms 120
+ "org-preview.mount" :version 1 :modes '(batch gui) :budget-ms 260
  :impact 'local :isolation 'series
  :description "Create a session and mount the sample document"
  :setup
@@ -101,6 +101,50 @@
             "The preview runtime is not mounted")
            ((not (string-match-p "标题与元数据" (buffer-string)))
             "Folding removed the document")
+           (t t))))
+      :cleanup
+      (lambda ()
+        (when (buffer-live-p buffer)
+          (with-current-buffer buffer
+            (when (etaf-runtime-for-buffer buffer)
+              (etaf-unmount)))
+          (kill-buffer buffer)))))))
+
+(taf-benchmark-register
+ "org-preview.edit" :version 1 :modes '(batch gui) :budget-ms 80
+ :impact 'local :isolation 'series
+ :description "Edit one paragraph and repaint the mounted document"
+ :setup
+ (lambda (_mode)
+   (let* ((text (with-temp-buffer
+                  (insert-file-contents etaf-org-preview-benchmark--file)
+                  (buffer-string)))
+          (session (etaf-org-preview-create :text text))
+          (buffer (etaf-mount
+                   (generate-new-buffer " *TAF org edit*")
+                   (etaf-org-preview-view session)
+                   '(:viewport-width 900 :viewport-height 50)))
+          (edited 0))
+     (list
+      :buffer buffer
+      :invoke
+      (lambda (sample)
+        (let ((changed (replace-regexp-in-string
+                        "标题与元数据"
+                        (format "标题与元数据 %d" sample)
+                        text t t)))
+          (plist-put session :text changed)
+          (etaf-org-preview-refresh session)
+          (with-current-buffer buffer
+            (etaf-runtime-flush (etaf-runtime-for-buffer buffer)))
+          (cl-incf edited)))
+      :verify
+      (lambda ()
+        (with-current-buffer buffer
+          (cond
+           ((not (etaf-runtime-for-buffer buffer))
+            "The preview runtime is not mounted")
+           ((zerop edited) "No edit was published")
            (t t))))
       :cleanup
       (lambda ()

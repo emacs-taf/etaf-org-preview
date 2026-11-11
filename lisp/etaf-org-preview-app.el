@@ -289,10 +289,21 @@ selected instead of rendered twice."
                      (plist-put session :buffer (current-buffer))
                      (etaf-org-preview--fit-width session window))
            :on-close (lambda ()
+                       (etaf-org-preview--live-unregister session)
                        (etaf-org-preview--follow-unregister
                         (plist-get session :file))
                        (plist-put session :buffer nil)))))
     (plist-put session :buffer buffer)
+    (let ((source (and (plist-get session :file)
+                       (find-buffer-visiting (plist-get session :file)))))
+      (when (and (null source)
+                 (derived-mode-p 'org-mode)
+                 buffer-file-name
+                 (plist-get session :file)
+                 (equal (expand-file-name buffer-file-name)
+                        (plist-get session :file)))
+        (setq source (current-buffer)))
+      (etaf-org-preview--live-register session source))
     (etaf-org-preview--follow-register session)
     (with-current-buffer buffer
       (setq-local imenu-create-index-function

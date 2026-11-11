@@ -64,9 +64,12 @@ not prepared, its tables are not measured and its blocks are not mounted.
 That is what keeps a large file fast: a 120-section document mounts in about
 120 ms as an outline and about 350 ms fully expanded.
 
-A document opened from a file follows that file. Saving the source, or
-changing it on disk, repaints after the write settles (250 ms) and keeps the
-reader in the section it was reading. `r` reloads on demand.
+A document opened from a file follows that file. Saving the source, changing
+it on disk, or typing in its buffer without saving repaints after the edit
+settles (250 ms for a file write, 300 ms of quiet for a buffer edit) and keeps
+the reader in the section it was reading. Closing the source buffer falls back
+to the file on disk. `r` reloads on demand, and an unsaved revision is read as
+it stands instead of being replaced by the file.
 
 ## Syntax coverage
 
@@ -132,7 +135,8 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `# comment` lines | Hidden by default |
 | `: fixed width` | Monospace text |
 | `-----` | A hairline divider |
-| LaTeX environments and `\[ … \]` / `$$ … $$` | Centered monospace source with entities substituted |
+| `#+BEGIN_SRC mermaid` | A diagram drawn through mermaid-cli, in the page's colours; its source when the program is absent |
+| LaTeX environments and `\[ … \]` / `$$ … $$` | Typeset through KaTeX when mermaid-cli is installed, otherwise centered monospace source with entities substituted |
 
 ### Inline
 
@@ -237,5 +241,6 @@ the whole session as detached data.
 ## Diagnostics
 
 `M-x etaf-org-preview-doctor` reports whether Org and ffmpeg are available.
-Neither is required: Org improves `id:` links and keyword defaults, ffmpeg
+Ordinary reading, tables and images need neither. Org improves `id:` links and
+keyword defaults, ffmpeg
 only matters for video previews.

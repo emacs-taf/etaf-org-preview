@@ -59,13 +59,18 @@
                  (lambda ()
                    (etaf-org-preview-fold session id 'folded)
                    (etaf-runtime-flush (etaf-runtime-for-buffer buffer)))))
+       (changed (replace-regexp-in-string
+                 "第 60 节 Section 60" "第 60 节 Section 60 已改" document t t))
        (refresh-ms (etaf-org-preview-benchmark--milliseconds
-                    (lambda () (etaf-org-preview-refresh session)))))
+                    (lambda ()
+                      (plist-put session :text changed)
+                      (etaf-org-preview-refresh session)
+                      (etaf-runtime-flush (etaf-runtime-for-buffer buffer))))))
   (unwind-protect
       (with-current-buffer buffer
         (princ (format (concat "sections=%d chars=%d lines=%d "
                                "parse=%.1fms mount=%.1fms fold=%.1fms "
-                               "refresh=%.1fms\n")
+                               "edit+repaint=%.1fms\n")
                        etaf-org-preview-benchmark-sections (length document)
                        (line-number-at-pos (point-max))
                        parse-ms mount-ms fold-ms refresh-ms)))

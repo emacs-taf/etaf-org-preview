@@ -8,8 +8,9 @@
 | `lisp/etaf-org-preview-entities.el` | Entity names to Unicode, plus the sub- and superscript tables. Generated from `org-entities` by `scripts/generate-entities.el`; never edited by hand. |
 | `lisp/etaf-org-preview-parse.el` | Pure parser: text to a document tree. No file access, no buffer, no frame. |
 | `lisp/etaf-org-preview-theme.el` | Fixed palettes, face-derived palette, heading contrast rule, ETAF UI token bridge. |
-| `lisp/etaf-org-preview-model.el` | Session state: load, parse errors, fold cells, navigation, targets, media resolution, follow mode. |
-| `lisp/etaf-org-preview-views.el` | Tree to ETAF Views: inline runs, blocks, headline Component, document layout. |
+| `lisp/etaf-org-preview-model.el` | Session state: load, parse errors, fold cells, navigation, targets, media resolution, keyed publishing, environment cache, refresh and live follow. |
+| `lisp/etaf-org-preview-views.el` | Tree to ETAF Views: inline runs, blocks, keyed block and headline Components, document layout. |
+| `lisp/etaf-org-preview-typeset.el` | Optional drawing of display formulas and `mermaid` blocks through mermaid-cli, with a content-and-palette cache and asynchronous repaint. |
 | `lisp/etaf-org-preview-app.el` | Application shell: buffer, root keys, commands, width fitting. |
 | `tests/` | Public behavior scenarios and their fixtures; `acceptance.json` inventories them. |
 | `benchmarks/` | `performance-scenarios.el` for the shared driver and `render-large-document.el` for a local baseline. |
@@ -156,13 +157,47 @@ background in place.
 | --- | --- |
 | Fold one section | One fold cell → one section Component |
 | Fold everything | One batch over all fold cells → one flush |
-| Palette | Theme ref → whole document (colors only) |
-| Reading measure | Width ref → reflow, no re-parse |
-| Refresh | New document ref plus fold cells kept by id → one flush |
-| Hidden content | Hidden ref → sections re-render without their fold state changing |
+| Palette | Theme ref → republish so drawn pictures follow the page, then recolored blocks |
+| Reading measure | Width ref → block environment change, reflow, no re-parse |
+| Refresh from an edit | New document with keyed entries; only the changed block's call is new |
+| Hidden content | Hidden ref → block/section environment change, no publish |
 
 The fold path is the one that has to stay cheap; a regression test asserts that
 folding one section publishes a small buffer update rather than a full one.
+
+## Keyed publishing
+
+Every publish turns the parsed tree into entries. A body block's key is a
+digest of its content, including a drawn picture; a headline's key also covers
+its heading fields, its body-block keys and its child keys. An entry whose key
+survives reuses the previous Component call, so ETAF hands the runtime the same
+value and the block never renders again. An edit therefore creates one new
+block call on its path to the root; every unchanged sibling keeps its instance,
+hosts and fold cell. Two identical blocks are told apart by an occurrence
+number in the key.
+
+The rendering environment is built from reactive inputs only (palette, width,
+hidden flag, title, table-of-contents depth) and cached until one changes. It
+does not read the document, so publishing a document does not re-render every
+block that reads it. A block Component reads this environment in its own
+render; a palette or width change therefore reaches every block without a
+publish, while the keyed calls stay stable.
+
+## Live editing and drawing
+
+A displayed file session follows its source buffer through
+`after-change-functions`: an edit schedules one repaint after 300 ms of quiet,
+reads the buffer text as it stands, and publishes it. A save or an external
+write still schedules the file watcher; closing the source buffer falls back to
+the file. Text read from the buffer is never written back.
+
+A display formula or a `mermaid` source block is drawn asynchronously when
+mermaid-cli is present. Publication only attaches a picture that is already in
+the cache, so a keystroke never starts a program. After a publish, a timer
+starts one render per missing picture; the finished PNG is keyed by source,
+palette and body size, and the page is published once more, which repaints only
+the blocks whose picture key changed. A program that refuses a source is
+remembered for the session and that block keeps its source.
 
 ## Refresh and follow
 
@@ -182,15 +217,17 @@ rendered lines, 900×50 viewport), Emacs 31, Apple silicon:
 
 | Path | Time |
 | --- | --- |
-| Parse | 27 ms |
-| Mount, every section open | 354 ms |
-| Mount, `overview` (headlines only) | 120 ms |
-| Fold one section and flush | 0.7 ms |
-| Refresh and reparse | 87 ms |
+| Parse | 34 ms |
+| Mount, every section open | 170 ms |
+| Mount, `overview` (headlines only) | 72 ms |
+| Fold one section and flush | 0.4 ms |
+| Edit one paragraph and repaint | 26 ms |
 
 The outline mount is the number that matters for large files: mounting only
 headlines costs about a third of the fully expanded tree, and each expanded
-section adds only its own content. `make benchmark` prints these numbers with
+section adds only its own content. A publish keys every block by content, so
+the edit row repaints one paragraph instead of the document. `make benchmark`
+prints these numbers with
 `ORG_PREVIEW_BENCH_SECTIONS` controlling the size; the registered scenarios in
 `benchmarks/performance-scenarios.el` cover parse, mount, fold and refit for the
 shared performance driver.

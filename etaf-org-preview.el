@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; Version: 0.1.1
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "29.1") (etaf "0.3.0") (etaf-ui "0.2.0"))
 ;; Keywords: hypermedia, docs, org
 ;; URL: https://github.com/emacs-taf/etaf-org-preview
@@ -17,9 +17,11 @@
 ;; measure with a typographic heading scale, keyword chips, planning lines,
 ;; tags, nested and description lists, checkboxes, tables, source and example
 ;; blocks, quotes, callouts, images, footnotes, a table of contents, property
-;; chips and entities.  Folding is structural: a closed section is not
-;; rendered at all, so a large document opens as an outline and unfolds on
-;; demand.
+;; chips and entities.  Display formulas and `mermaid' source blocks are drawn
+;; with mermaid-cli when it is installed.  Folding is structural: a closed
+;; section is not rendered at all, so a large document opens as an outline and
+;; unfolds on demand.  A publish keeps every unchanged block's instance, and a
+;; displayed preview follows edits in its source buffer before they are saved.
 ;;
 ;; A session is the unit of state.  `etaf-org-preview-create' builds one from
 ;; a file or from text, `etaf-org-preview-open' displays it in its own buffer,
@@ -188,6 +190,12 @@
 ;; Variable: etaf-org-preview-image-max-height (default 24)
 ;; Tallest image, in text lines; a narrower reading measure also shrinks it.
 ;;
+;; Variable: etaf-org-preview-typeset (default t)
+;; Whether a display formula and a `mermaid' source block are drawn.
+;; Drawing needs mermaid-cli (`mmdc'); without it, or with this nil, both keep
+;; their source text.  A picture is cached by source, palette and body size,
+;; and a page never waits for a program: a finished picture repaints its block.
+;;
 ;; Variable: etaf-org-preview-expand-limit (default 4000)
 ;; Body blocks a global expansion may mount at once.
 ;;
@@ -219,6 +227,7 @@
 (require 'etaf-org-preview-theme)
 (require 'etaf-org-preview-views)
 (require 'etaf-org-preview-model)
+(require 'etaf-org-preview-typeset)
 (require 'etaf-org-preview-app)
 
 (defun etaf-org-preview-doctor ()

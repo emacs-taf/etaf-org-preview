@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+
+- Display formulas (`$$…$$`, `\[…\]`, LaTeX environments) are typeset through
+  KaTeX and `mermaid` source blocks are drawn through mermaid-cli, each in the
+  page's own colours and cached by source, palette and body size.  A page never
+  waits for a program; a finished picture repaints only its block.  Without
+  mermaid-cli both keep their source, controlled by `etaf-org-preview-typeset`.
+- A displayed preview follows unsaved edits in its source buffer: typing
+  repaints after 300 ms of quiet, saving and external writes keep working, and
+  closing the source buffer falls back to the file on disk.
+
+### Changed
+
+- Publishing is keyed by block content.  An unchanged block keeps its Component
+  instance, so an edit repaints only the changed block and the sections on its
+  path instead of the document.  The rendering environment is cached from
+  reactive inputs and no longer reads the document, so palette and width
+  changes do not re-render every block.
+- Mounting the 120-section benchmark fell from 354 ms to 170 ms, and editing one
+  paragraph and repainting it costs about 26 ms instead of a full refresh.
+
 ## 0.1.1
 
 ### Fixed

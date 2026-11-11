@@ -604,5 +604,36 @@
         (should (string-match-p (regexp-quote "21 (+ 3 4)") text))
         (should-not (string-match-p (regexp-quote "1 (+ 1 2)") text))))))
 
+(ert-deftest etaf-org-preview-tests-typeset-disabled-keeps-the-formula-source ()
+  "With the drawing switched off, a display formula keeps its source text."
+  (let ((etaf-org-preview-typeset nil))
+    (let ((session (etaf-org-preview-create
+                    :text "* 公式\n$$e = mc^2$$\n")))
+      (etaf-org-preview-tests--with-mount session
+        (should (string-match-p "e = mc" (etaf-org-preview-tests--text)))))))
+
+(ert-deftest etaf-org-preview-tests-live-edit-follows-the-unsaved-buffer ()
+  "Editing a source buffer without saving repaints the preview from that text."
+  (let ((file (make-temp-file "org-preview-live" nil ".org"
+                              "* 测试\n\n原始正文\n")))
+    (unwind-protect
+        (let ((source (find-file-noselect file)))
+          (unwind-protect
+              (let ((preview (etaf-org-preview-open file)))
+                (unwind-protect
+                    (progn
+                      (with-current-buffer source
+                        (goto-char (point-max))
+                        (insert "未保存的新段落\n"))
+                      (sit-for 0.8)
+                      (with-current-buffer preview
+                        (etaf-runtime-flush (etaf-runtime-for-buffer (current-buffer)))
+                        (should (string-match-p
+                                 "未保存的新段落"
+                                 (etaf-org-preview-tests--text)))))
+                  (with-current-buffer preview (etaf-org-preview-close))))
+            (when (buffer-live-p source) (kill-buffer source))))
+      (delete-file file))))
+
 (provide 'etaf-org-preview-tests)
 ;;; etaf-org-preview-tests.el ends here
