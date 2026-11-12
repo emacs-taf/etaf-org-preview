@@ -239,6 +239,21 @@
       "name": "etaf-org-preview-tests-ordered-lists-keep-their-style-and-counter",
       "file": "tests/etaf-org-preview-tests.el",
       "purpose": "A parenthesized ordered list keeps its own markers, and a counter cookie overrides only its own item."
+    },
+    {
+      "name": "etaf-org-preview-tests-source-blocks-use-syntax-colours",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A named source block paints its tokens with the language's own syntax colours through the shared highlighter."
+    },
+    {
+      "name": "etaf-org-preview-tests-table-rows-do-not-add-a-blank-line",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A table paints its rows one after another without an empty bordered row between them."
+    },
+    {
+      "name": "etaf-org-preview-tests-logbook-without-properties-still-summarises",
+      "file": "tests/etaf-org-preview-tests.el",
+      "purpose": "A logbook that opens a section body is summarised as a chip instead of falling through as an unknown drawer."
     }
   ]
 }

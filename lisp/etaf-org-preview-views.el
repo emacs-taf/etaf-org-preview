@@ -26,6 +26,9 @@
 (require 'etaf-org-preview-theme)
 (declare-function etaf-org-preview--env "etaf-org-preview-model" (session))
 (declare-function etaf-org-preview--typeset-figure "etaf-org-preview-typeset" (kind path env))
+(declare-function etaf-ui-markdown-highlight-code "etaf-ui-markdown-highlight" (language text))
+(declare-function etaf-ui-color-legible "etaf-ui" (color background &optional ratio))
+(declare-function etaf-ui-color-contrast "etaf-ui" (first second))
 
 (defconst etaf-org-preview--measure-gutter 2
   "Character cells kept blank on each side of the reading measure.")
@@ -72,12 +75,11 @@
 (defun etaf-org-preview--chip (env text ink background &optional bold)
   "Return a compact chip for TEXT in ENV.
 INK and BACKGROUND are palette keys; BOLD picks the weight.  The chip keeps one
-character cell of inline padding and a small radius, so a row of chips reads as
+character cell of inline padding and a square edge, so a row of chips reads as
 labels rather than as words with a fill."
   (etaf-node 'box
              (list :background-color (etaf-org-preview--color env background)
                    :color (etaf-org-preview--color env ink)
-                   :border-radius '(px 3)
                    :width 'max-content
                    :flex-shrink 0
                    :padding-left '(ch 1)
@@ -159,7 +161,7 @@ same rhythm instead of a margin that grows with its level."
 A text node carries one string, so a link with formatted text is a box that
 holds the inline nodes and owns the activation."
   (etaf-node 'box
-             (list :color (etaf-org-preview--color env :accent)
+             (list :color (etaf-org-preview--color env :link)
                    :text-decoration-line '(underline)
                    :on-press (lambda () (etaf-org-preview--act env :open target))
                    :role 'button
@@ -194,9 +196,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
            (push (list :text (or (plist-get node :text) "")
                        :props (append
                                (list :background-color
-                                     (etaf-org-preview--color
-                                      env (if (plist-get node :verbatim)
-                                              :panel2 :accent-soft))
+                                     (etaf-org-preview--color env :panel2)
                                      :font-family (etaf-org-preview--mono))
                                inherited))
                  result))
@@ -208,7 +208,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
                           target)))
              (push (list :text text
                          :props (append
-                                 (list :color (etaf-org-preview--color env :accent)
+                                 (list :color (etaf-org-preview--color env :link)
                                        :text-decoration-line '(underline))
                                  inherited)
                          :press (lambda ()
@@ -228,7 +228,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
            (let ((label (plist-get node :label)))
              (push (list :text (format "[%d]" (plist-get node :number))
                          :props (append
-                                 (list :color (etaf-org-preview--color env :accent)
+                                 (list :color (etaf-org-preview--color env :link)
                                        :font-size (etaf-org-preview--scaled env 0.78))
                                  inherited)
                          :press (lambda ()
@@ -261,7 +261,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
           ('latex-fragment
            (push (list :text (plist-get node :text)
                        :props (append
-                               (list :color (etaf-org-preview--color env :accent)
+                               (list :color (etaf-org-preview--color env :link)
                                      :font-family (etaf-org-preview--mono)
                                      :font-style 'italic)
                                inherited))
@@ -270,7 +270,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
            (push (list :text (plist-get node :text)
                        :props (append
                                (list :background-color
-                                     (etaf-org-preview--color env :accent-soft)
+                                     (etaf-org-preview--color env :panel2)
                                      :font-family (etaf-org-preview--mono))
                                inherited))
                  result))
@@ -278,7 +278,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
            (push (list :text (or (plist-get node :text) "")
                        :props (append
                                (list :background-color
-                                     (etaf-org-preview--color env :accent-soft)
+                                     (etaf-org-preview--color env :panel2)
                                      :font-family (etaf-org-preview--mono))
                                inherited))
                  result))
@@ -299,7 +299,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
                                     (etaf-org-preview--act env :target name))
                            :help (format "跳到目标：%s" name)
                            :props (append
-                                   (list :color (etaf-org-preview--color env :accent)
+                                   (list :color (etaf-org-preview--color env :link)
                                          :text-decoration-line '(underline))
                                    inherited))
                      result))))
@@ -527,10 +527,10 @@ cells left by rounding back to columns that are still below their floor."
                  and do (cl-decf leftover))
         result))))
 
-(cl-defun etaf-org-preview--table-row (row env widths &key header rule)
+(cl-defun etaf-org-preview--table-row (row env widths &key header)
   "Return one table row View of ROW in ENV.
 WIDTHS holds the content width of each column.  HEADER fills the header
-surface and LAST drops the closing rule."
+surface."
   (let* ((cell-count (length (plist-get row :cells)))
          (separator (etaf-node 'box
                                (list :width '(px 1)
@@ -538,7 +538,7 @@ surface and LAST drops the closing rule."
                                      :align-self 'stretch
                                      :background-color
                                      (etaf-org-preview--color
-                                      env (if header :border :rule)))
+                                      env :table-border))
                                nil))
          (cells nil)
          (index 0))
@@ -548,7 +548,6 @@ surface and LAST drops the closing rule."
                          (list :width (list 'ch (+ 2 width))
                                :flex-shrink 0
                                :padding-inline '(ch 1)
-                               :padding-bottom '(lh 0.5)
                                :wrap-mode 'word
                                :text-align (or (nth index (plist-get env :table-aligns))
                                                'left))
@@ -563,12 +562,14 @@ surface and LAST drops the closing rule."
                (list :width 'stretch :align-items 'center
                      :background-color (when header
                                          (etaf-org-preview--color env :table-header))
-                     ;; One rule under the header keeps it apart from the
-                     ;; body; body rows stay open so the table reads as
-                     ;; columns instead of as a spreadsheet.
-                     :border-bottom (when (or header rule)
-                                      (list '(px 1) 'solid
-                                            (etaf-org-preview--color env :border))))
+                     ;; A full grid, not a spreadsheet: every row is bounded
+                     ;; and the first and last cell close the outer edge.
+                     :border-top (when header
+                                   (list '(px 1) 'solid
+                                         (etaf-org-preview--color env :table-border)))
+                     :border-bottom (list '(px 1) 'solid
+                                          (etaf-org-preview--color
+                                           env :table-border)))
                (nreverse cells))))
 
 (defun etaf-org-preview--table-view (block env)
@@ -580,7 +581,6 @@ column and the table never grows past the reading measure."
          (aligns (or (plist-get block :aligns) nil))
          (widths-cookie (or (plist-get block :widths) nil))
          (header-count (or (plist-get block :header-count) 0))
-         (rules (plist-get block :rules))
          (floors (cl-loop for column from 0 below columns
                           collect (or (nth column widths-cookie)
                                       (cl-loop for row in rows
@@ -603,33 +603,33 @@ column and the table never grows past the reading measure."
     (dolist (row rows)
       (push (etaf-org-preview--table-row
              row env widths
-             :header (< index header-count)
-             ;; RULES holds the row count before each rule line, so the row
-             ;; that ends at that position is the one carrying the rule.
-             :rule (and (member (1+ index) rules) t))
+             :header (< index header-count))
             row-views)
       (cl-incf index))
     (let* ((total (+ (* 2 columns) (apply #'+ widths) separator-cells))
            (table (etaf-node 'column
-                             (list :width 'stretch :item-gap '(lh 0.5))
+                             (list :width 'stretch :item-gap '(lh 0))
                              (nreverse row-views))))
       (etaf-node 'column
                  (list :width 'stretch :item-gap '(lh 0.5))
                  (append
                   (list (etaf-node 'box
-                                   (list :width (list 'ch total)
+                                   (list :width (list 'ch (1+ total))
+                                         :border (list '(px 1) 'solid
+                                                       (etaf-org-preview--color
+                                                        env :table-border))
                                          :overflow 'hidden)
                                    (list table)))
-                  (when-let* ((tblfm (plist-get block :tblfm)))
-                    (list (etaf-node 'text
-                                     (list :color (etaf-org-preview--color env :faint)
-                                           :font-size (etaf-org-preview--scaled env 0.8))
-                                     (list (format "公式未求值：%s" tblfm)))))
                   (when-let* ((caption (plist-get block :caption)))
                     (list (etaf-node 'text
                                      (list :color (etaf-org-preview--color env :muted)
                                            :font-size (etaf-org-preview--scaled env 0.85))
-                                     (list caption)))))))))
+                                     (list caption))))
+                  (when-let* ((tblfm (plist-get block :tblfm)))
+                    (list (etaf-node 'text
+                                     (list :color (etaf-org-preview--color env :faint)
+                                           :font-size (etaf-org-preview--scaled env 0.8))
+                                     (list (format "公式未求值：%s" tblfm))))))))))
 
 (defun etaf-org-preview--list-marker-text (item)
   "Return the text that marks ITEM in an ordered list, or nil."
@@ -708,7 +708,8 @@ reads."
         (push
          (if term
              (etaf-node 'column
-                        (list :width 'stretch :item-gap '(lh 0.45))
+                        (list :width 'stretch :item-gap '(lh 0.45)
+                              :margin-bottom '(vh 0.55))
                         (list
                          (etaf-node 'box
                                     (list :width 'stretch :wrap-mode 'word)
@@ -723,7 +724,8 @@ reads."
                                           :padding-top '(lh 0.10))
                                     content)))
            (etaf-node 'flex
-                      (list :width 'stretch :align-items 'start)
+                      (list :width 'stretch :align-items 'start
+                            :margin-bottom '(vh 0.55))
                       (list
                        (etaf-node 'box
                                   (list :width (list 'ch (1+ marks))
@@ -740,6 +742,93 @@ reads."
                      :item-gap (list 'lh (if description 1.0 0.40)))
                (nreverse views))))
 
+(defconst etaf-org-preview--code-token-colors
+  '((light . ((keyword . "#cf222e") (builtin . "#0550ae") (string . "#0a3069")
+              (comment . "#6e7781") (function . "#8250df") (variable . "#953800")
+              (type . "#953800") (constant . "#0550ae")
+              (preprocessor . "#953800") (warning . "#9a6700")))
+    (dark . ((keyword . "#ff7b72") (builtin . "#79c0ff") (string . "#a5d6ff")
+             (comment . "#8b949e") (function . "#d2a8ff") (variable . "#ffa657")
+             (type . "#ffa657") (constant . "#79c0ff")
+             (preprocessor . "#ffa657") (warning . "#e3b341"))))
+  "Syntax colours a source block takes on a light and on a dark page.
+They are the same pairs the shared Markdown view uses, so a code block reads
+the same in either preview.")
+
+(defun etaf-org-preview--dark-page-p (env)
+  "Return non-nil when ENV paints its own dark page."
+  (let ((background (plist-get env :background)))
+    (if (and (stringp background)
+             (string-match-p "\\`#[0-9a-fA-F]\\{3,8\\}\\'" background))
+        (<= (etaf-ui-color-contrast background "#000000") 1.5)
+      (eq (etaf-appearance) 'dark))))
+
+(defun etaf-org-preview--code-token-color (props env)
+  "Return the colour for code run PROPS on ENV's page.
+A token with a font-lock role takes the shared syntax palette.  A token whose
+mode only set its own face keeps that hue, made readable on the code surface."
+  (let* ((dark (etaf-org-preview--dark-page-p env))
+         (role (plist-get props :role))
+         (palette (alist-get (if dark 'dark 'light)
+                             etaf-org-preview--code-token-colors))
+         (surface (etaf-org-preview--color env :panel)))
+    (or (alist-get role palette)
+        (etaf-ui-color-legible
+         (or (plist-get props :color)
+             (etaf-org-preview--color env :ink))
+         surface))))
+
+(defun etaf-org-preview--code-runs (language text env)
+  "Return highlighted runs of TEXT as LANGUAGE for ENV, or nil.
+The shared highlighter runs the language's own major mode, so the colour comes
+from the same font-lock rules as the source buffer; a language with no
+available mode simply keeps the block's normal ink."
+  (when (and (stringp language)
+             (not (string-empty-p language)))
+    (when-let* ((runs (etaf-ui-markdown-highlight-code language text)))
+      (mapcar
+       (lambda (run)
+         (let* ((props (copy-sequence (plist-get run :props)))
+                (color (etaf-org-preview--code-token-color props env)))
+           (list :text (plist-get run :text)
+                 :props (plist-put props :color color))))
+       runs))))
+
+(defun etaf-org-preview--code-text-nodes (runs)
+  "Return highlighted RUNS as text nodes."
+  (mapcar (lambda (run)
+            (etaf-node 'text (plist-get run :props)
+                       (list (plist-get run :text))))
+          runs))
+
+(defun etaf-org-preview--code-lines (text runs)
+  "Return TEXT split into lines of highlighted RUNS.
+Each line is a list of `(:text STRING :props PLIST)' pieces.  RUNS may be nil,
+in which case every line is one unstyled piece."
+  (if (not runs)
+      (mapcar (lambda (line) (list (list :text line :props nil)))
+              (split-string text "\n"))
+    (let ((lines nil)
+          (current nil))
+      (dolist (run runs)
+        (let ((remaining (plist-get run :text))
+              (props (plist-get run :props)))
+          (while (not (string-empty-p remaining))
+            (let ((newline (string-match "\n" remaining)))
+              (if newline
+                  (progn
+                    (when (> newline 0)
+                      (push (list :text (substring remaining 0 newline)
+                                  :props props)
+                            current))
+                    (push (nreverse current) lines)
+                    (setq current nil)
+                    (setq remaining (substring remaining (1+ newline))))
+                (push (list :text remaining :props props) current)
+                (setq remaining ""))))))
+      (push (nreverse current) lines)
+      (nreverse lines))))
+
 (defun etaf-org-preview--code-first-line (switches)
   "Return the first line number SWITCHES asks for, or nil.
 `-n' numbers from one, `-n 20' numbers from 20; any other switch keeps the
@@ -751,34 +840,36 @@ block unnumbered."
             (string-to-number (car rest))
           1)))))
 
-(defun etaf-org-preview--numbered-code-lines (text first env)
+(defun etaf-org-preview--numbered-code-lines (text first env &optional runs)
   "Return TEXT as numbered rows starting at FIRST in ENV.
+RUNS, when present, paints each line with the language's own syntax colours.
 The gutter keeps its width for the whole block and the code column wraps under
 itself, so a long line stays aligned with the rest of the block."
-  (let* ((lines (split-string text "\n"))
+  (let* ((lines (etaf-org-preview--code-lines text runs))
          (width (length (number-to-string (+ first (1- (length lines))))))
          (rows nil))
-    (dolist (line lines)
-      (push (etaf-node 'flex
-                       (list :width 'stretch :align-items 'start)
-                       (list
-                        (etaf-node 'box
-                                   (list :width (list 'ch (1+ width))
-                                         :flex-shrink 0
-                                         :text-align 'right
-                                         :color (etaf-org-preview--color env :faint)
-                                         :font-size (etaf-org-preview--scaled env 0.82)
-                                         :font-family (etaf-org-preview--mono))
-                                   (list (etaf-node 'text nil
-                                                    (list (number-to-string first)))))
-                        (etaf-node 'box
-                                   (list :flex-basis '(ch 0) :flex-grow 1
-                                         :padding-left '(ch 1)
-                                         :wrap-mode 'char)
-                                   (list (etaf-node 'text nil
-                                                    (list (if (string-empty-p line)
-                                                              " " line)))))))
-            rows)
+    (dolist (segments lines)
+      (push
+       (etaf-node 'flex
+                  (list :width 'stretch :align-items 'start)
+                  (list
+                   (etaf-node 'box
+                              (list :width (list 'ch (1+ width))
+                                    :flex-shrink 0
+                                    :text-align 'right
+                                    :color (etaf-org-preview--color env :faint)
+                                    :font-size (etaf-org-preview--scaled env 0.82)
+                                    :font-family (etaf-org-preview--mono))
+                              (list (etaf-node 'text nil
+                                               (list (number-to-string first)))))
+                   (etaf-node 'box
+                              (list :flex-basis '(ch 0) :flex-grow 1
+                                    :padding-left '(ch 1)
+                                    :wrap-mode 'char)
+                              (if segments
+                                  (etaf-org-preview--code-text-nodes segments)
+                                (list (etaf-node 'text nil (list " ")))))))
+       rows)
       (cl-incf first))
     (nreverse rows)))
 
@@ -791,6 +882,7 @@ reveal the rest."
          (body text)
          (first-line (etaf-org-preview--code-first-line
                       (plist-get block :switches)))
+         (runs (etaf-org-preview--code-runs language text env))
          (header (when (and language (not (string-empty-p language)))
                    (etaf-node 'box
                               (list :width 'stretch
@@ -806,16 +898,18 @@ reveal the rest."
                (list :width 'stretch
                      :background-color (etaf-org-preview--color env :panel)
                      :border (list '(px 1) 'solid
-                                   (etaf-org-preview--color env :border))
-                     :border-radius '(px 4))
+                                   (etaf-org-preview--color env :border)))
                (append
                 (when header (list header))
                 (list
                  (etaf-node 'box
                             (list :width 'stretch :wrap-mode 'char
                                   :font-family (etaf-org-preview--mono)
-                                  :padding (if header '((lh 0.5) (ch 2))
-                                             '((lh 1) (ch 2)))
+                                  ;; Horizontal air only: vertical padding in
+                                  ;; whole-line units paints an empty code line
+                                  ;; above and below the block.
+                                  :padding-inline '(ch 2)
+                                  :padding-top (unless header '(vh 0.6))
                                   :color (etaf-org-preview--color env :ink))
                             (list
                              (if first-line
@@ -823,8 +917,14 @@ reveal the rest."
                                             (list :width 'stretch
                                                   :item-gap '(lh 0))
                                             (etaf-org-preview--numbered-code-lines
-                                             body first-line env))
-                               (etaf-node 'text nil (list body))))))))))
+                                             body first-line env runs))
+                               (if runs
+                                   (etaf-node 'box
+                                              (list :width 'stretch
+                                                    :wrap-mode 'char
+                                                    :font-family (etaf-org-preview--mono))
+                                              (etaf-org-preview--code-text-nodes runs))
+                                 (etaf-node 'text nil (list body)))))))))))
 
 (defun etaf-org-preview--reveal-chip (env label help)
   "Return a chip reading LABEL in ENV that reveals hidden content on press.
@@ -878,7 +978,8 @@ drawer text is ever silently dropped."
                  ((or "note" "info") (list "提示" :info :info-soft))
                  ((or "tip" "hint") (list "要点" :ok :ok-soft))
                  ((or "important" "success") (list "重要" :info :info-soft))
-                 ((or "warning" "caution" "attention") (list "警告" :warn :warn-soft))
+                 ((or "warning" "attention") (list "警告" :warn :warn-soft))
+                 ("caution" (list "小心" :warn :warn-soft))
                  ((or "danger" "error") (list "危险" :danger :danger-soft))
                  (_ nil))))
     (if (null kind)
@@ -925,11 +1026,12 @@ drawer text is ever silently dropped."
                                 (plist-get block :blocks) env)))
               (when-let* ((attribution (plist-get block :attribution)))
                 (list (etaf-node 'box
-                                 (list :width 'stretch :text-align 'right)
+                                 (list :width 'stretch :text-align 'right
+                                       :padding-top '(lh 0.5))
                                  (list (etaf-node 'text
                                                   (list :color (etaf-org-preview--color
                                                                 env :muted))
-                                                  (list (format "-- %s" attribution))))))))))
+                                                  (list (format "— %s" attribution))))))))))
 
 (defun etaf-org-preview--block-view (block env)
   "Return the View of BLOCK in ENV, or nil when nothing renders."
@@ -1374,7 +1476,7 @@ opening reads as a title page instead of a stack of metadata."
                 (list
                  (etaf-node 'text
                             (list :color (etaf-org-preview--color env :heading)
-                                  :font-size (etaf-org-preview--scaled env 1.65)
+                                  :font-size (etaf-org-preview--scaled env 2.15)
                                   :font-weight 'bold)
                             (list title)))
                 (when (and subtitle (not (string-empty-p subtitle)))
@@ -1520,7 +1622,7 @@ sit directly on the page: a small label and quiet rows, without a card."
                                           (list :width '(ch 4) :flex-shrink 0)
                                           (list (etaf-node 'text
                                                            (list :color
-                                                                 (etaf-org-preview--color env :accent)
+                                                                 (etaf-org-preview--color env :link)
                                                                  :font-family
                                                                  (etaf-org-preview--mono))
                                                            (list (format "[%d]"

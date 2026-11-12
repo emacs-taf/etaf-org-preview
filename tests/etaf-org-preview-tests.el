@@ -657,5 +657,48 @@
         (should (string-match-p "4\\." text))
         (should-not (string-match-p "4)" text))))))
 
+(ert-deftest etaf-org-preview-tests-source-blocks-use-syntax-colours ()
+  "A named source block paints its tokens with the language's own colours."
+  (let ((session (etaf-org-preview-create
+                  :text (concat "* 代码\n#+BEGIN_SRC python\n"
+                                "def greet(name):\n"
+                                "    return \"hello\"\n"
+                                "#+END_SRC\n"))))
+    (etaf-org-preview-tests--with-mount session
+      (let ((keyword (etaf-org-preview-tests--face-attribute "def" :foreground))
+            (string (etaf-org-preview-tests--face-attribute "hello" :foreground)))
+        (should keyword)
+        (should string)
+        (should-not (equal keyword string))))))
+
+(ert-deftest etaf-org-preview-tests-table-rows-do-not-add-a-blank-line ()
+  "A table paints its rows one after another, without a blank frame row."
+  (let ((session (etaf-org-preview-create
+                  :text (concat "* 标题\n"
+                                "| 名称 | 值 |\n"
+                                "|------+----|\n"
+                                "| 甲   | 12 |\n"
+                                "| 乙   | 3  |\n"))))
+    (etaf-org-preview-tests--with-mount session
+      (let ((lines (split-string (etaf-org-preview-tests--text) "\n")))
+        (should (string-match-p "名称" (etaf-org-preview-tests--text)))
+        (should-not (cl-some
+                     (lambda (line)
+                       (string-match-p "\\`[[:space:]]*│[[:space:]]*│[[:space:]]*\\'" line))
+                     lines))))))
+
+(ert-deftest etaf-org-preview-tests-logbook-without-properties-still-summarises ()
+  "A logbook that opens the body is a summary chip, not an unknown drawer."
+  (let ((session (etaf-org-preview-create
+                  :text (concat "* 记录\n"
+                                ":LOGBOOK:\n"
+                                "CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:30] =>  1:30\n"
+                                ":END:\n"
+                                "正文\n"))))
+    (etaf-org-preview-tests--with-mount session
+      (let ((text (etaf-org-preview-tests--text)))
+        (should (string-match-p "记录 1 · 1:30" text))
+        (should-not (string-match-p "抽屉 LOGBOOK" text))))))
+
 (provide 'etaf-org-preview-tests)
 ;;; etaf-org-preview-tests.el ends here

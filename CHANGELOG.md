@@ -1,14 +1,36 @@
 # Changelog
 
+## 0.3.1
+
+### Changed
+
+- Tables are a closed grid again: a hairline around the table and between every
+  row and column, a header tint and explicit `|---` rules. The rows no longer
+  reserve a blank line above each cell, and the grid uses its own visible
+  border token in every palette.
+- Links use a muted link token derived from the reader's own link color, and an
+  inline code or export snippet gets a neutral surface. The raw hyperlink blue
+  is no longer painted across paragraph text.
+- Chips and code cards have square edges, so they keep the ETAF square box
+  model.
+- A `CAUTION` callout reads “小心”, distinct from `WARNING`; a quote attribution
+  sits on its own right-aligned line under the quote.
+- List items keep their one-cell marker gap and gain a small vertical margin.
+- Source blocks are syntax-coloured through the same font-lock highlighter the
+  Markdown preview uses, so keywords, strings, functions and comments read the
+  same in both views. A logbook that opens a section body is summarised as a
+  chip instead of falling through as an unknown drawer.
+
 ## 0.3.0
 
 ### Changed
 
 - Headlines use the shared Markdown type ladder: level 1 is twice the body,
   level 2 one and a half, level 3 one and a quarter, level 4 a little above the
-  body, and deeper levels keep the body size in muted ink. Levels 1 and 2 carry
-  the Markdown rule and every heading keeps one blank line above it; no level
-  indents.
+  body, and deeper levels keep the body size in muted ink. Levels 1 to 4 use a
+  deep heading blue, the document title sits above the ladder at 2.15 times the
+  body, levels 1 and 2 carry the Markdown rule, and every heading keeps one
+  blank line above it; no level indents.
 - A headline is no longer a fold control. The chevron, `C-c TAB`, `C-c f` and
   the initial `#+STARTUP:` fold state are gone; every ordinary section is
   rendered in place. `COMMENT` and `:ARCHIVE:`

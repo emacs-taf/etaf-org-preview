@@ -198,14 +198,14 @@ unmounts the runtime.
 
 ## Performance baseline
 
-Measured in batch on the maintained benchmark (`120` sections, 40 KB, 2753
+Measured in batch on the maintained benchmark (`120` sections, 40 KB, 2272
 rendered lines, 900×50 viewport), Emacs 31, Apple silicon:
 
 | Path | Time |
 | --- | --- |
 | Parse | 34 ms |
-| Mount, every section open | 170 ms |
-| Edit one paragraph and repaint | 26 ms |
+| Mount, every section open | 257 ms |
+| Edit one paragraph and repaint | 28 ms |
 
 A publish keys every block by content, so the edit row repaints one paragraph
 instead of the document. `make benchmark` prints these numbers with

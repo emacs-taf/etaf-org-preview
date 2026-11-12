@@ -24,11 +24,13 @@ change repaints only what it touches.
   fixed-width, quote, verse, center, comment and export blocks, callouts
   (`NOTE`, `TIP`, `WARNING`, …), entities, subscripts, timestamps, footnotes,
   citations, macros, targets, links and layout directives. Images honor
-  attribute widths, source blocks honor `-n`, and a drawer or logbook keeps its
-  text one key away.
-- **A heading ladder that reads like Markdown.** Level 1 is twice the body,
-  level 2 is one and a half, level 3 one and a quarter, level 4 a little above
-  the body, and deeper levels keep the body size in muted ink. Levels 1 and 2
+  attribute widths, source blocks honor `-n` and take their language's own
+  syntax colours, and a drawer or logbook keeps its text one key away.
+- **A heading ladder that reads like Markdown.** The title sits above the
+  ladder at 2.15 times the body. Level 1 is twice the body, level 2 is one and
+  a half, level 3 one and a quarter, level 4 a little above the body, and
+  deeper levels keep the body size in muted ink. Levels 1 to 4 use the same
+  deep heading blue; deeper levels fall back to the muted ink. Levels 1 and 2
   carry the Markdown rule, every heading keeps one blank line above it, and no
   level indents. A headline is never a fold button; TODO keywords, tags and
   planning lines give it the rest of its shape.

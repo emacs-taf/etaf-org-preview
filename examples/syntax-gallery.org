@@ -8,7 +8,6 @@
 #+FILETAGS: :gallery:reference:
 #+DESCRIPTION: 覆盖预览器支持的 Org 语法和常见变体，用来看每一种写法最终排成什么样。
 #+OPTIONS: toc:1 todo:t tags:t pri:t ^:t -:t d:nil
-#+STARTUP: content
 #+TODO: TODO(t) NEXT(n) WAIT(w@) | DONE(d) CANCELLED(c@)
 #+PRIORITIES: A C B
 #+MACRO: product ETAF Org Preview
@@ -51,7 +50,6 @@ SCHEDULED: <2026-11-12 Thu 10:00 +1w> DEADLINE: <2026-11-15 Sun 18:00 -2d> CLOSE
 :CUSTOM_ID: properties-demo
 :OWNER: 我
 :EVIDENCE: 日志、截图、采样
-:VISIBILITY: folded
 :END:
 :LOGBOOK:
 CLOCK: [2026-11-10 Tue 09:00]--[2026-11-10 Tue 10:30] =>  1:30
@@ -71,7 +69,7 @@ CLOCK: [2026-11-10 Tue 11:00]--[2026-11-10 Tue 11:45] =>  0:45
 
 ** 深层标题
 
-下面一路到八级，用来检查标题字号、缩进和分隔线。
+下面一路到八级，用来检查各级标题的字号和分隔线。
 
 *** 三级标题
 **** 四级标题
@@ -181,7 +179,7 @@ H_2O，x^2，a_{i+j}，10^{-3}。实体写法：\alpha、\beta、\to、\dots、\
 ** 描述列表
 
 - 阅读视图 :: 只读的 Org 排版
-- 统一标题 :: 各级标题同一字号，用缩进和颜色分层
+- 标题尺度 :: 各级标题按 Markdown 字号阶梯排，一级到四级用同一种标题蓝
 - 增量重绘 :: 改一段只重绘这一段
 
 ** 列表里的多段与代码
@@ -438,7 +436,7 @@ flowchart LR
 ** 未知抽屉
 
 :NOTE:
-这里的内容不能丢。默认折叠时显示“抽屉 NOTE”标签，按 C-c v 后显示这段文字。
+这里的内容不能丢。默认收成“抽屉 NOTE”小标签，按 C-c v 后显示这段文字。
 :END:
 
 抽屉后面的正文仍然正常排版。

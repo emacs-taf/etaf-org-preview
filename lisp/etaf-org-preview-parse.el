@@ -1660,21 +1660,23 @@ The preview keeps rendering deterministic: the file wins, then the user's
     (nreverse outline)))
 
 (defun etaf-org-preview--lift-section-metadata (sections)
-  "Move property drawers and logbooks of SECTIONS into their sections."
+  "Move property drawers and logbooks of SECTIONS into their sections.
+A logbook may follow a property drawer or open the body on its own; both forms
+belong to the section summary rather than to the reading blocks."
   (cl-labels ((walk (section)
                 (let ((body (etaf-org-preview-section-body section)))
                   (when (and body (eq (plist-get (car body) :type) 'property-drawer))
                     (setf (etaf-org-preview-section-properties section)
                           (plist-get (car body) :properties))
                     (setf (etaf-org-preview-section-body section) (cdr body))
-                    (setq body (cdr body))
-                    (when (and body (eq (plist-get (car body) :type) 'drawer)
-                               (equal (plist-get (car body) :name) "LOGBOOK"))
-                      (setf (etaf-org-preview-section-logbook section)
-                            (plist-get (car body) :clock))
-                      (setf (etaf-org-preview-section-logbook-text section)
-                            (plist-get (car body) :text))
-                      (setf (etaf-org-preview-section-body section) (cdr body)))))
+                    (setq body (cdr body)))
+                  (when (and body (eq (plist-get (car body) :type) 'drawer)
+                             (equal (plist-get (car body) :name) "LOGBOOK"))
+                    (setf (etaf-org-preview-section-logbook section)
+                          (plist-get (car body) :clock))
+                    (setf (etaf-org-preview-section-logbook-text section)
+                          (plist-get (car body) :text))
+                    (setf (etaf-org-preview-section-body section) (cdr body))))
                 (when (or (member "ARCHIVE" (etaf-org-preview-section-tags section))
                           (equal (cdr (assoc "ARCHIVE" (etaf-org-preview-section-properties
                                                         section)))

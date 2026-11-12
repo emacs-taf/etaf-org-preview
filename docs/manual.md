@@ -46,13 +46,14 @@ windows and scrolling work unchanged.
 Every section heading uses the shared Markdown type ladder. Level 1 is twice
 the body, level 2 one and a half times the body, level 3 one and a quarter,
 level 4 a little above the body, and deeper levels keep the body size in muted
-ink. Levels 1 and 2 carry the Markdown rule, and every heading keeps one blank
-line above it. No level indents or acts as a fold button: TODO keywords,
-priority, tags and planning lines give the rest of the row its shape.
+ink. Levels 1 to 4 use one deep heading blue; deeper levels use the muted ink.
+Levels 1 and 2 carry the Markdown rule, and every heading keeps one blank line
+above it. No level indents or acts as a fold button: TODO keywords, priority,
+tags and planning lines give the rest of the row its shape.
 
-The document title is the one larger type on the page. A 120-section document
-mounts in about 170 ms, and an edit repaints only the block it changed, so a
-paragraph costs about 26 ms including the painted page. `make benchmark` prints
+The document title is the largest line, at 2.15 times the body. A 120-section document
+mounts in about 257 ms with syntax-coloured code, and an edit repaints only the
+block it changed, so a paragraph costs about 28 ms including the painted page. `make benchmark` prints
 these numbers with `ORG_PREVIEW_BENCH_SECTIONS` controlling the size; the
 registered scenarios in `benchmarks/performance-scenarios.el` cover parse,
 mount, edit and refit for the maintained sample.
@@ -114,11 +115,11 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `[@3]` | Overrides the displayed number of that item only |
 | `[ ]`, `[-]`, `[X]` | Three marks: an empty box, a dashed box for a task in progress, and a check |
 | `- term :: description` | A bold term on its own line; the definition hangs behind a quiet left rule |
-| Tables | Header tint, one rule under the header and hairline rules between columns; no outer frame and no rule between body rows. Alignment and width cookies, `<n>` minimum widths; a wide cell wraps inside its column instead of overflowing |
+| Tables | A closed grid: header tint, a hairline around the table and between every row and column, compact rows and explicit `|---` rules. Alignment and width cookies, `<n>` minimum widths; a wide cell wraps inside its column instead of overflowing |
 | Multi-rule tables `|---` | A hairline at each explicit rule row |
-| `#+BEGIN_SRC` | A code card with its language; the `-n` and `-n 20` switches add a line-number gutter |
+| `#+BEGIN_SRC` | A code card with its language, syntax-coloured through that language's own major mode; the `-n` and `-n 20` switches add a line-number gutter |
 | `#+BEGIN_EXAMPLE` | A code card without a language |
-| `#+BEGIN_QUOTE` | An indented quote with a trailing `-- author` line |
+| `#+BEGIN_QUOTE` | A quiet card with its attribution line, right-aligned under the quote |
 | `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION` | A callout with a written label and its semantic color |
 | Other special blocks | A card with the block name |
 | `#+BEGIN_CENTER` | Centered content capped at 80% of the measure |
@@ -139,14 +140,14 @@ A document without `#+TITLE` uses its file name, then the session title.
 | `=verbatim=`, `~code~` | Monospace with a soft background |
 | Entities (`\alpha`, `\to`) | Unicode spelling from Org's own table |
 | `H_2`, `x^2` | Unicode sub- and superscripts; an unmappable value keeps its marker |
-| `[[target][description]]` | An underlined accent link inside the paragraph |
+| `[[target][description]]` | An underlined link in the theme's muted link tone, not a raw hyperlink blue |
 | Bare URLs | Links |
 | Timestamps | Date, Chinese weekday and time; active and inactive differ in color |
 | `[fn:1]`, `[fn::text]` | A numbered reference set smaller than the paragraph; the footnote is listed at the end |
 | `[cite:@key]`, `[@key]` | Monospace citation text |
 | `{{{macro}}}`, `{{{title}}}` | Expanded |
 | `src_py{…}` | Monospace with a soft background |
-| `@@html:…@@` | Its payload in source style; the backend marker is removed and the payload is never interpreted |
+| `@@html:…@@` | Its payload in a neutral source surface; the backend marker is removed and the payload is never interpreted |
 | `<<target>>`, `<<<radio>>>` | The definition is a quiet anchor; a reference is link text that jumps to it |
 | `\\` | A line break |
 
