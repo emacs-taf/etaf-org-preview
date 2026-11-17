@@ -287,7 +287,7 @@ its own aspect ratio and a formula is a line of the text around it."
                  (list image
                        (etaf-node 'text
                                   (list :color (etaf-org-preview-typeset--color env :muted)
-                                        :font-size (etaf-org-preview--scaled env 0.85))
+                                        :font-size (etaf-org-preview--scaled 0.85))
                                   (list "▲ mermaid")))))))
 
 (defun etaf-org-preview--typeset-figure (kind path env)

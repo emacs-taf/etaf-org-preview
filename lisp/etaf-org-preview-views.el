@@ -46,14 +46,12 @@
   "Return ENV's palette color for semantic KEY."
   (etaf-org-preview-color key (plist-get env :palette)))
 
-(defun etaf-org-preview--base (env)
-  "Return ENV's base font size in pixels."
-  (or (plist-get env :base-pixels)
-      (etaf-org-preview--base-pixels)))
-
-(defun etaf-org-preview--scaled (env factor)
-  "Return ENV's base size scaled by FACTOR, rounded to an integer."
-  (max 6 (round (* (etaf-org-preview--base env) factor))))
+(defun etaf-org-preview--scaled (factor)
+  "Return FACTOR as a ratio of the body size.
+Ebox reads `:font-size' against the body, so the preview's own type scale is a
+set of ratios: the reader's default font decides the pixels on every platform
+and no height has to be measured from the frame."
+  (max 0.3 (min 4 factor)))
 
 (defun etaf-org-preview--mono ()
   "Return the frame's fixed-pitch family, or nil."
@@ -84,7 +82,7 @@ labels rather than as words with a fill."
                    :flex-shrink 0
                    :padding-left '(ch 1)
                    :padding-right '(ch 1)
-                   :font-size (etaf-org-preview--scaled env 0.82))
+                   :font-size (etaf-org-preview--scaled 0.82))
              (list (etaf-node 'text (list :font-weight (if bold 'bold 'normal))
                               (list text)))))
 
@@ -94,9 +92,7 @@ The ladder is the shared Markdown one: level 1 is twice the body, level 2 one
 and a half, level 3 one and a quarter, level 4 a little above the body, and
 deeper levels keep the body size so a heading is never smaller than the text
 it introduces."
-  (etaf-org-preview--scaled
-   env
-   (pcase level
+  (etaf-org-preview--scaled (pcase level
      (1 2.00)
      (2 1.50)
      (3 1.25)
@@ -229,7 +225,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
              (push (list :text (format "[%d]" (plist-get node :number))
                          :props (append
                                  (list :color (etaf-org-preview--color env :link)
-                                       :font-size (etaf-org-preview--scaled env 0.78))
+                                       :font-size (etaf-org-preview--scaled 0.78))
                                  inherited)
                          :press (lambda ()
                                   (etaf-org-preview--act env :footnote label))
@@ -246,7 +242,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
                        :props (append
                                (list :color (etaf-org-preview--color env :muted)
                                      :font-family (etaf-org-preview--mono)
-                                     :font-size (etaf-org-preview--scaled env 0.85))
+                                     :font-size (etaf-org-preview--scaled 0.85))
                                inherited))
                  result))
           ('citation
@@ -291,7 +287,7 @@ INHERITED is the style plist of the enclosing inline element.  An entry is
                              :props (append
                                      (list :color (etaf-org-preview--color env :faint)
                                            :font-family (etaf-org-preview--mono)
-                                           :font-size (etaf-org-preview--scaled env 0.8))
+                                           :font-size (etaf-org-preview--scaled 0.8))
                                      inherited))
                        result)
                (push (list :text name
@@ -477,7 +473,7 @@ its own height."
                 (when (and caption (not (string-empty-p caption)))
                   (list (etaf-node 'text
                                    (list :color (etaf-org-preview--color env :muted)
-                                         :font-size (etaf-org-preview--scaled env 0.85))
+                                         :font-size (etaf-org-preview--scaled 0.85))
                                    (list caption))))))))
 
 (defun etaf-org-preview--file-card (block env)
@@ -623,12 +619,12 @@ column and the table never grows past the reading measure."
                   (when-let* ((caption (plist-get block :caption)))
                     (list (etaf-node 'text
                                      (list :color (etaf-org-preview--color env :muted)
-                                           :font-size (etaf-org-preview--scaled env 0.85))
+                                           :font-size (etaf-org-preview--scaled 0.85))
                                      (list caption))))
                   (when-let* ((tblfm (plist-get block :tblfm)))
                     (list (etaf-node 'text
                                      (list :color (etaf-org-preview--color env :faint)
-                                           :font-size (etaf-org-preview--scaled env 0.8))
+                                           :font-size (etaf-org-preview--scaled 0.8))
                                      (list (format "公式未求值：%s" tblfm))))))))))
 
 (defun etaf-org-preview--list-marker-text (item)
@@ -858,7 +854,7 @@ itself, so a long line stays aligned with the rest of the block."
                                     :flex-shrink 0
                                     :text-align 'right
                                     :color (etaf-org-preview--color env :faint)
-                                    :font-size (etaf-org-preview--scaled env 0.82)
+                                    :font-size (etaf-org-preview--scaled 0.82)
                                     :font-family (etaf-org-preview--mono))
                               (list (etaf-node 'text nil
                                                (list (number-to-string first)))))
@@ -892,7 +888,7 @@ reveal the rest."
                               (list (etaf-node 'text
                                                (list :color (etaf-org-preview--color env :muted)
                                                      :font-family (etaf-org-preview--mono)
-                                                     :font-size (etaf-org-preview--scaled env 0.82))
+                                                     :font-size (etaf-org-preview--scaled 0.82))
                                                (list language)))))))
     (etaf-node 'box
                (list :width 'stretch
@@ -952,7 +948,7 @@ drawer text is ever silently dropped."
                     (list (etaf-node 'text
                                      (list :color (etaf-org-preview--color env :muted)
                                            :font-family (etaf-org-preview--mono)
-                                           :font-size (etaf-org-preview--scaled env 0.8))
+                                           :font-size (etaf-org-preview--scaled 0.8))
                                      (list (format "抽屉 %s" name))))
                     (unless (string-empty-p text)
                       (list (etaf-node 'box
@@ -963,8 +959,7 @@ drawer text is ever silently dropped."
                                                               (etaf-org-preview--color
                                                                env :ink)
                                                               :font-size
-                                                              (etaf-org-preview--scaled
-                                                               env 0.85))
+                                                              (etaf-org-preview--scaled 0.85))
                                                         (list text))))))))
       (etaf-node 'box
                  (list :padding-left '(ch 2) :padding-top '(lh 0.25))
@@ -992,7 +987,7 @@ drawer text is ever silently dropped."
                    (append
                     (list (etaf-node 'text
                                      (list :color (etaf-org-preview--color env :muted)
-                                           :font-size (etaf-org-preview--scaled env 0.82)
+                                           :font-size (etaf-org-preview--scaled 0.82)
                                            :font-family (etaf-org-preview--mono))
                                      (list (upcase name))))
                     (etaf-org-preview--block-views
@@ -1096,14 +1091,14 @@ drawer text is ever silently dropped."
          (etaf-node 'text
                     (list :color (etaf-org-preview--color env :faint)
                           :font-family (etaf-org-preview--mono)
-                          :font-size (etaf-org-preview--scaled env 0.85))
+                          :font-size (etaf-org-preview--scaled 0.85))
                     (list (or (plist-get block :text) "")))))
       ('keyword
        (when (and hidden (not (plist-get block :attached)))
          (etaf-node 'text
                     (list :color (etaf-org-preview--color env :faint)
                           :font-family (etaf-org-preview--mono)
-                          :font-size (etaf-org-preview--scaled env 0.85))
+                          :font-size (etaf-org-preview--scaled 0.85))
                     (list (format "#+%s: %s" (plist-get block :key)
                                   (plist-get block :value))))))
       ('horizontal-rule (etaf-org-preview--rule env 0.75))
@@ -1144,7 +1139,7 @@ drawer text is ever silently dropped."
                   (append
                    (list (etaf-node 'text
                                     (list :color (etaf-org-preview--color env :muted)
-                                          :font-size (etaf-org-preview--scaled env 0.82))
+                                          :font-size (etaf-org-preview--scaled 0.82))
                                     (list (if (eq type 'dynamic-block)
                                               (format "未求值的动态块：%s"
                                                       (or (plist-get block :name) ""))
@@ -1154,7 +1149,7 @@ drawer text is ever silently dropped."
                      (list (etaf-node 'text
                                       (list :color (etaf-org-preview--color env :faint)
                                             :font-family (etaf-org-preview--mono)
-                                            :font-size (etaf-org-preview--scaled env 0.85))
+                                            :font-size (etaf-org-preview--scaled 0.85))
                                       (list text)))))))
       ('include-card
        (etaf-org-preview--file-card
@@ -1217,15 +1212,13 @@ without a font that carries calendar or alarm glyphs."
                          (list (etaf-node 'text
                                           (list :color (etaf-org-preview--color
                                                         env (nth 2 pair))
-                                                :font-size (etaf-org-preview--scaled
-                                                            env 0.78)
+                                                :font-size (etaf-org-preview--scaled 0.78)
                                                 :font-weight 'bold)
                                           (list (nth 1 pair)))
                                (etaf-node 'text
                                           (list :color (etaf-org-preview--color
                                                         env (nth 2 pair))
-                                                :font-size (etaf-org-preview--scaled
-                                                            env 0.85)
+                                                :font-size (etaf-org-preview--scaled 0.85)
                                                 :font-family (etaf-org-preview--mono))
                                           (list (etaf-org-preview--timestamp-text
                                                  stamp)))))
@@ -1253,15 +1246,13 @@ An expanded view (HIDDEN set) is a two-column grid; otherwise one chip."
                                                       (list :color (etaf-org-preview--color
                                                                     env :muted)
                                                             :font-family (etaf-org-preview--mono)
-                                                            :font-size (etaf-org-preview--scaled
-                                                                        env 0.82))
+                                                            :font-size (etaf-org-preview--scaled 0.82))
                                                       (list (car pair)))
                                            (etaf-node 'text
                                                       (list :color (etaf-org-preview--color
                                                                     env :ink)
                                                             :font-family (etaf-org-preview--mono)
-                                                            :font-size (etaf-org-preview--scaled
-                                                                        env 0.82))
+                                                            :font-size (etaf-org-preview--scaled 0.82))
                                                       (list (cdr pair))))))
                              properties))
         (etaf-node 'box
@@ -1293,7 +1284,7 @@ HIDDEN also shows the recorded lines under the summary."
                                         (list :width 'stretch :wrap-mode 'char
                                               :color (etaf-org-preview--color env :muted)
                                               :font-family (etaf-org-preview--mono)
-                                              :font-size (etaf-org-preview--scaled env 0.8))
+                                              :font-size (etaf-org-preview--scaled 0.8))
                                         (list (etaf-node 'text nil (list text)))))))
         (etaf-node 'box
                    (list :padding-left '(ch 2) :padding-top '(lh 0.25))
@@ -1323,7 +1314,7 @@ HIDDEN also shows the recorded lines under the summary."
                                  ("A" :danger)
                                  ("B" :warn)
                                  (_ :muted)))
-                   :font-size (etaf-org-preview--scaled env 0.78)
+                   :font-size (etaf-org-preview--scaled 0.78)
                    :padding-left '(ch 0.5)
                    :padding-right '(ch 0.5))
              (list (etaf-node 'text nil (list (format "#%s" priority))))))
@@ -1476,14 +1467,14 @@ opening reads as a title page instead of a stack of metadata."
                 (list
                  (etaf-node 'text
                             (list :color (etaf-org-preview--color env :heading)
-                                  :font-size (etaf-org-preview--scaled env 2.15)
+                                  :font-size (etaf-org-preview--scaled 2.15)
                                   :font-weight 'bold)
                             (list title)))
                 (when (and subtitle (not (string-empty-p subtitle)))
                   (list (etaf-org-preview--spacer 1)
                         (etaf-node 'text
                                    (list :color (etaf-org-preview--color env :muted)
-                                         :font-size (etaf-org-preview--scaled env 1.12))
+                                         :font-size (etaf-org-preview--scaled 1.12))
                                    (list subtitle))))
                 (when (or (not (string-empty-p byline)) modified)
                   (list (etaf-org-preview--spacer 1)
@@ -1498,7 +1489,7 @@ opening reads as a title page instead of a stack of metadata."
                                                        (list :color (etaf-org-preview--color
                                                                      env :faint)
                                                              :font-size
-                                                             (etaf-org-preview--scaled env 0.85))
+                                                             (etaf-org-preview--scaled 0.85))
                                                        (list byline))))
                                     (when (and modified
                                                (not (string-empty-p byline)))
@@ -1511,7 +1502,7 @@ opening reads as a title page instead of a stack of metadata."
                                                        (list :color (etaf-org-preview--color
                                                                      env :faint)
                                                              :font-size
-                                                             (etaf-org-preview--scaled env 0.78))
+                                                             (etaf-org-preview--scaled 0.78))
                                                        (list modified))))))))
                 (when (or keywords filetags)
                   (list (etaf-org-preview--spacer 1)
@@ -1530,7 +1521,7 @@ opening reads as a title page instead of a stack of metadata."
                                                        (list :color (etaf-org-preview--color
                                                                      env :faint)
                                                              :font-size
-                                                             (etaf-org-preview--scaled env 0.82))
+                                                             (etaf-org-preview--scaled 0.82))
                                                        (list (string-join
                                                               (mapcar (lambda (tag)
                                                                         (concat "#" tag))
@@ -1555,7 +1546,7 @@ opening reads as a title page instead of a stack of metadata."
                                (etaf-org-preview--act env :locate (nth 2 entry))))
              (list (etaf-node 'text
                               (list :color (etaf-org-preview--color env :muted)
-                                    :font-size (etaf-org-preview--scaled env 0.95))
+                                    :font-size (etaf-org-preview--scaled 0.95))
                               (list (nth 1 entry))))))
 
 (defun etaf-org-preview--toc-view (document env)
@@ -1593,7 +1584,7 @@ sit directly on the page: a small label and quiet rows, without a card."
                      (list
                       (etaf-node 'text
                                  (list :color (etaf-org-preview--color env :muted)
-                                       :font-size (etaf-org-preview--scaled env 0.82)
+                                       :font-size (etaf-org-preview--scaled 0.82)
                                        :font-weight 'bold)
                                  (list "目录"))
                       (etaf-node 'box
@@ -1630,7 +1621,7 @@ sit directly on the page: a small label and quiet rows, without a card."
                                (etaf-node 'box
                                           (list :width 'stretch :wrap-mode 'word
                                                 :font-size
-                                                (etaf-org-preview--scaled env 0.9))
+                                                (etaf-org-preview--scaled 0.9))
                                           (etaf-org-preview--inline-nodes
                                            (plist-get footnote :inlines) env)))))
                  footnotes)))))
