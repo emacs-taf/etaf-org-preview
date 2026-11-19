@@ -86,8 +86,8 @@ labels rather than as words with a fill."
              (list (etaf-node 'text (list :font-weight (if bold 'bold 'normal))
                               (list text)))))
 
-(defun etaf-org-preview--heading-size (env level)
-  "Return the heading size in ENV for LEVEL.
+(defun etaf-org-preview--heading-size (level)
+  "Return the heading size for LEVEL, as a ratio of the body size.
 The ladder is the shared Markdown one: level 1 is twice the body, level 2 one
 and a half, level 3 one and a quarter, level 4 a little above the body, and
 deeper levels keep the body size so a heading is never smaller than the text
@@ -1342,7 +1342,7 @@ The row is plain reading text: it carries no fold affordance."
                                 (etaf-org-preview-section-title-inlines section)
                                 env
                                 (list :font-size
-                                      (etaf-org-preview--heading-size env level)
+                                      (etaf-org-preview--heading-size level)
                                       :font-weight 'bold
                                       :color (etaf-org-preview--color
                                               env (etaf-org-preview--heading-ink level))))))
